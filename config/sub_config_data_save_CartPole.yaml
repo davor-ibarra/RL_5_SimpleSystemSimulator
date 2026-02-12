@@ -1,0 +1,26 @@
+data_save:
+  config:
+    enabled_json_history: true
+    enabled_summary: true
+    summary_first_cols: [
+      'episode', 
+      'episode_wall_time_sec', 
+      'epsilon', 
+      'learning_rate', 
+      'gain_delta', 
+      'total_agent_decisions', 
+      'time_duration', 
+      'termination_reason', 
+      'total_reward', 
+      'performance', 
+      'avg_stability_score',
+      'final_kp_pendulum_angle', 
+      'final_ki_pendulum_angle', 
+      'final_kd_pendulum_angle',
+      'final_kp_cart_position',
+      'final_ki_cart_position',
+      'final_kd_cart_position'
+      ]
+    enabled_summary_stats: true
+    chunk_size: 100           # episodes por chunk JSON
+    agent_state_save_frequency: 50   # cada N episodios guardar Q-tables

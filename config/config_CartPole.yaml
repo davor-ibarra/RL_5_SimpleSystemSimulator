@@ -1,0 +1,302 @@
+# ========================================
+# Environment Configuration
+# ========================================
+# Simulation Manager
+simulation:
+  n_episodes: 5000                                            # Maximum number of episodes to run
+  episode_duration_sec: 5.0                                   # Total simulation time per episode (s)
+  dt_sec: 0.001                                               # Simulation time step (s)
+  decision_interval_sec: 0.02                                 # Time between agent decisions (s) - must be multiple of dt_sec
+# --- Dynamic System ---
+dynamic_system:
+  system_name: cart_pole
+  module_path: dynamic_system.cart_pole_dynamic_system
+  class_name: CartPoleDynamicSystem
+  # Initial conditions for Episodes                           # 0.0349066(2°) 0.0873 (5°) 0.157 (9°) 0.1746 (10°) 0.2618 (15°)
+  initial_conditions: {cart_position: 0.0, cart_velocity: 0.0, pendulum_angle: 0.157, pendulum_velocity: 0.0}
+  params:
+    mass_cart_kg: 5.0                                         # Mass of the cart (kg)
+    mass_pendulum_kg: 1.0                                     # Mass of the pendulum bob (kg)
+    l: 1.0                                                    # Length of the pendulum rod (m)
+    g: 9.81                                                   # Acceleration due to gravity (m/s^2)
+    cart_friction_coef: 0.0                                   # Damping coefficient of the cart (friction)
+    pivot_friction_coef: 0.0                                  # Damping coefficient of the pendulum pivot (friction)
+    max_torque_nm: 2.0                                        # Torque Máximo
+    gear_ratio: 1.0                                           # Relación de engranajes
+    pinion_radius_m: 0.05                                     # Radio de rueda o piñon del engrane
+  termination_conditions:
+    boundary_constraint:
+      cart_position: [-5.0, 5.0]
+      pendulum_angle: [-1.0472, 1.0472]
+    stabilization_criteria:
+      pendulum_angle: [-0.005, 0.005]                         # Range for pendulum angle (rad)
+      pendulum_velocity: [-0.05, 0.05]                        # Range for angular velocity (rad/s)
+      cart_position: [-0.05, 0.05]                            # Range for cart position (m)   [-0.05, 0.05]   [-1.05, -0.95]
+      cart_velocity: [-0.01, 0.01]                            # Range for cart velocity (m/s)
+  reference_system_correction:
+    enabled: true
+    vars_correction: [pendulum_angle]
+  state_normalization:
+    enabled: true
+    output_limits: [-1.0, 1.0]
+    ranges_params: 
+      cart_position: [-5.0, 5.0]
+      cart_velocity: [-0.01, 0.01]
+      pendulum_angle: [-1.0472, 1.0472]
+      pendulum_velocity: [-0.05, 0.05]
+# --- Controller ---
+controller_base:
+  mixing_policy: sum
+  global_actuator_enabled: true
+  global_actuator_limits: [-1.0, 1.0]
+  controllers:
+    controller_pendulum_angle:
+      controller_name: controller_pendulum_angle
+      module_path: controllers.pid_controller
+      class_name: PIDController
+      initial_conditions: {kp: 1.0, ki: 1.0, kd: 1.0}
+      params:
+        name_objective_var: 'pendulum_angle'
+        setpoint: 0.0
+        error_is_setpoint_minus_pv: false                      # Para sistemas de acción inversa como: WaterTank
+        anti_windup:
+          enabled: true
+          method: 'conditional'                                # 'perfect_back_calculation' | 'back_calculation' | 'conditional'
+          back_calculation_betha: 0.2
+    controller_cart_position:
+      controller_name: controller_cart_position
+      module_path: controllers.pid_controller
+      class_name: PIDController
+      initial_conditions: {kp: 1.0, ki: 1.0, kd: 1.0}
+      params:
+        name_objective_var: 'cart_position'
+        setpoint: 0.0
+        error_is_setpoint_minus_pv: false
+        anti_windup:
+          enabled: true
+          method: 'conditional'                                # 'perfect_back_calculation' | 'back_calculation' | 'conditional'
+          back_calculation_betha: 0.2
+# --- Agent ---
+agent_base:
+  agent_base_name: pid_qlearning
+  module_path: agents.pid_qlearning_agent
+  class_name: PIDQLearningAgent
+  params:
+    algorithm: q-learning                                      # sarsa | q-learning
+    discount_factor: 0.99                                      # Q-learning discount factor (gamma)
+    # Epsilon (Exploration Rate) Settings
+    epsilon: 1.0
+    epsilon_decay:
+      enabled: true
+      decay_factor: 0.998849                                   # Decay factor per episode | 0.998849 (4000) | 0.99942452 (8000)| 0.9995395 (10000)
+      epsilon_min: 0.01                                        # Minimum exploration rate
+    # Learning Rate (Alpha) Settings
+    learning_rate: 0.2
+    learning_rate_decay:
+      enabled: true
+      decay_factor: 0.99925                                    # Decay factor per episode | 0.99925 (4000) | 0.999625604 (8000) | 0.9997005 (10000)
+      learning_rate_min: 0.01                                  # Minimum learning rate
+  # Agent Configuration
+  agent_config:
+    # Actions Configuration
+    actions:
+      actions_space: {0: 'decrease', 1: 'maintain', 2: 'increase'}
+      delta_gain: 0.2
+    # Agent and State Configuration
+    agents:
+      kp_pendulum_angle:       {enabled_agent: true, min: 0.0, max: 5.0, bins: 26, state_vars: []}
+      ki_pendulum_angle:       {enabled_agent: true, min: 0.0, max: 5.0, bins: 26, state_vars: []}
+      kd_pendulum_angle:       {enabled_agent: true, min: 0.0, max: 5.0, bins: 26, state_vars: []}
+      kp_cart_position:        {enabled_agent: true, min: 0.0, max: 5.0, bins: 26, state_vars: []}
+      ki_cart_position:        {enabled_agent: true, min: 0.0, max: 5.0, bins: 26, state_vars: []}
+      kd_cart_position:        {enabled_agent: true, min: 0.0, max: 5.0, bins: 26, state_vars: []}
+      error_pendulum_angle: {enabled_agent: false, min: -0.5, max: 0.5, bins: 3, state_vars: []}
+      error_cart_position: {enabled_agent: false, min: -0.5, max: 0.5, bins: 3, state_vars: []}
+# --- Reward Configuration ---
+reward_base:
+  # --- 0. Reward Base Configuration ---
+  reward_base_name: reward_base
+  module_path: rewards.reward_calculator_base
+  class_name: RewardCalculatorBase
+  # --- 1. Reward Configuration ---
+  reward_config:
+    reward_approach: controller_reward                # unique_for_all_reward | controller_reward | individual_reward
+    # Credit Assignment
+    individual_reward_params:
+      method: lineal_combination
+      lineal_combination_params:
+        pendulum_angle:
+          kp_pendulum_angle: {w_e: 1.0, w_edot: 1.0, w_I: 1.0, w_u: 1.0, w_s: 1.0} # w_e: 0.6, w_edot: 0.4, w_I: 0.2, w_u: 0.4, w_s: 0.3
+          ki_pendulum_angle: {w_e: 1.0, w_edot: 1.0, w_I: 1.0, w_u: 1.0, w_s: 1.0} # w_e: 0.1, w_edot: 0.1, w_I: 0.7, w_u: 0.2, w_s: 0.3
+          kd_pendulum_angle: {w_e: 1.0, w_edot: 1.0, w_I: 1.0, w_u: 1.0, w_s: 1.0} # w_e: 0.3, w_edot: 0.5, w_I: 0.1, w_u: 0.4, w_s: 0.4
+        cart_position:
+          kp_cart_position: {w_e: 1.0, w_edot: 1.0, w_I: 1.0, w_u: 1.0, w_s: 1.0}
+          ki_cart_position: {w_e: 1.0, w_edot: 1.0, w_I: 1.0, w_u: 1.0, w_s: 1.0}
+          kd_cart_position: {w_e: 1.0, w_edot: 1.0, w_I: 1.0, w_u: 1.0, w_s: 1.0}
+  # --- 2. Reward Calculation Configuration ---
+  reward_calculation:
+    # --- Metric Processing ---
+    metric_processing:
+      normalization:
+        enabled: true
+        output_limits: [0.0, 1.0]     # [-1.0, 1.0] | [0.0, 1.0]
+        params:  # abs | accum | mean | mean_squared | rms // proportion | trend | change_and_osci | keep_last
+          pendulum_angle:
+            e: {method: mean_squared, range: [-1.0, 1.0]}         # Error en espacio normalizado [-1, 1]
+            edot: {method: mean_squared, range: [-50.0, 50.0]}    # Derivada error normalizado (conservador)
+            I: {method: mean_squared, range: [-5.0, 5.0]}         # Integral error normalizado (acumulación)
+            u: {method: mean_squared, range: [-1.0, 1.0]}         # Acción de control [-1, 1]
+            delta_u: {method: mean_squared, range: [-2.0, 2.0]}   # Variación acción [-2, 2] máximo
+          cart_position:
+            e: {method: mean_squared, range: [-1.0, 1.0]}         # Error en espacio normalizado [-1, 1]
+            edot: {method: mean_squared, range: [-50.0, 50.0]}    # Derivada error normalizado (conservador)
+            I: {method: mean_squared, range: [-5.0, 5.0]}         # Integral error normalizado (acumulación)
+            u: {method: mean_squared, range: [-1.0, 1.0]}         # Acción de control [-1, 1]
+            delta_u: {method: mean_squared, range: [-2.0, 2.0]}   # Variación acción [-2, 2] máximo
+          global_vars:
+            #u_total:       {method: mean_squared ,range: [-1, 1]}
+            #delta_u_total: {method: mean_squared, range: [-2, 2]}
+    # --- Principal Reward Components ---
+    principal_reward:
+      enabled: true
+      reward_principal_name: lagrange_reward
+      module_path: rewards.lagrange_reward_calculator
+      class_name: LagrangeRewardCalculator
+      method: lineal_combination            # lineal_combination | weighted_exponential
+      lineal_combination_params:
+        features:
+          L_e:       {weight: 0.35}           # Peso del error
+          L_edot:    {weight: 0.35}           # Peso de la derivada del error
+          L_I:       {weight: 0.0}            # Peso de la integral del error
+          L_delta_u: {weight: 0.3}            # Peso de la variación de acción de control
+      weighted_exponential_params:
+        features:
+          L_e:       {weight: 1.0, scaled: 0.1, setpoint: 0.0}
+          L_edot:    {weight: 1.0, scaled: 0.1, setpoint: 0.0}
+          L_I:       {weight: 0.0, scaled: 0.3, setpoint: 0.0}
+          L_delta_u: {weight: 0.5, scaled: 0.25, setpoint: 0.0}
+    # --- Extra Rewards ---
+    extra_rewards:
+      enabled: true
+      reward_extra_name: extra_rewards
+      module_path: rewards.extra_rewards_handler
+      class_name: ExtraRewardsHandler
+      # Penalty Approach
+      penalty_approach:
+        penalty_instantaneous_reward:
+          enabled: false
+          method: lineal                # lineal | quadratic
+          type: fixed
+          penalty_lineal_params:
+            time: 200                  # time_coeff = 2*R_acum/t_deseado^2
+          penalty_quadratic_params:
+            time: 0.4                     # 0.79984 -> 10000 | 0.39992 -> 5000 | 0.079984 -> 1000
+        penalty_delta_var:
+          enabled: false
+          method: 'quadratic'             # 'lineal' | 'quadratic'
+          penalty_delta_var_params:
+            delta_control_action_pendulum_angle: {weight: 0.1}
+      # Bonus Approach
+      bonus_approach:
+        goal_bonus_reward:
+          enabled: true
+          success_flags: ['goal_reached', 'stabilized']
+          method: decay                                    # static | decay
+          static_params:
+            bonus_value: 500.0
+          decay_params:
+            decay_type: exponential                        # exponential | linear
+            base_value: 30.0
+            min_value: 2.0
+            time_constant_sec: 1.2
+        # Bono de aproximación (zona ampliada)
+        bandwidth_bonus:
+          enabled: true
+          per_step_band_bonus: 0.004           # Bono por cada dt dentro de la zona ampliada
+          max_total_band_bonus: 1000.0        # Tope máximo acumulado por episodio (None: ilimitado)
+          ranges: {
+                error_cart_position: [-0.08, 0.08]  # [-0.08, 0.08]   [-1.08, -0.92]
+                }
+      # Conditional Approach
+      conditional_approach:
+        dynamic_penalty:
+          enabled: false
+          method: quadratic               # "lineal" | "quadratic"
+          dynamic_penalty_params:
+            control_action_pendulum_angle: {weight: 0.2, condition: {type: 'exp', feature: 'error_pendulum_angle', scaled: 0.04, setpoint: 0.0}}
+            control_action_cart_position: {weight: 0.2, condition: {type: 'exp', feature: 'error_cart_position', scaled: 0.2, setpoint: -1.0}}
+        dynamic_incentive:
+          enabled: false
+          method: adaptative                    # "lineal" | "adaptative"
+          dynamic_incentive_lineal_params:
+            error_pendulum_angle: {weight: 0.5, x: 'error_cart_position', x_max: 0.25, y_max: 0.1}
+          dynamic_incentive_adapt_params:
+            error_cart_position: {
+                                type: 'tanh', y_max: 0.18, strength: 9.0, x: 'error_pendulum_angle', x_sp: -1.0,    # y_max -> corresponde al respectivo param
+                                f_reward: {type: 'exp', weight: 0.6, scaled: 0.08}
+                              }
+            error_pendulum_angle: {
+                                type: 'tanh', y_max: 0.1, strength: 6.0, x: 'error_cart_position', x_sp: 0.0,    # y_max -> corresponde al respectivo param
+                                f_reward: {type: 'exp', weight: 0.1, scaled: 0.30}
+                              }
+metrics_setup:
+  # --- 1. System measure ----
+  system_measure:
+    entropy:
+      regime_control:
+        enabled: false
+        method: shanon
+        shanon_params: {}
+      stacionarity:
+        enabled: false
+        method: shanon
+        shanon_params: {}
+    risk_measures:
+      security_control:
+        enabled: false
+        type: cvar                            # 'mean' | 'var' | 'cvar'
+        alpha: 0.95
+        vars: [L_e_total, L_u_total, L_sat_total] 
+  # --- 2. Stability Score (w_stab) Configuration ---
+  stability_measure:
+    type: exp_decay_metric       # exp_decay_metric, ira_zscore_metric
+    # simple_exponential_params -> exp_decay_metric_params
+    exp_decay_metric_params:
+      features:
+          pendulum_angle:     {weight: 0.30, scaled: 0.1}
+          pendulum_velocity:  {weight: 0.15, scaled: 0.5}
+          cart_position:      {weight: 0.40, scaled: 0.25, setpoint: 0.0}
+          cart_velocity:      {weight: 0.15, scaled: 0.5}
+    # ira_instantaneous_params -> ira_zscore_metric_params
+    ira_zscore_metric_params: 
+      lambda_factor: 1.0
+      epsilon_zscore_denominator: 1.0e-6
+      adaptive_stats:
+        enabled: false                ## REVISAR, hay log.info pero no hay data en SUMMARY
+        min_episode: 3000
+        min_sigma: 1.0e-4
+      features:
+        pendulum_angle:         {weight: 0.1, mu: 0.0, sigma: 0.05 }
+        pendulum_velocity:      {weight: 0.1, mu: 0.0, sigma: 0.05 }
+        cart_position:          {weight: 0.1, mu: 0.0, sigma: 0.5 }
+        cart_velocity:          {weight: 0.1, mu: 0.0, sigma: 0. }
+# --- End of Reward Configuration ---
+
+
+# ========================================
+# Data Handling Configuration
+# ========================================
+data_handling:
+  output_root: 'results_history_CartPole' # Base folder for saving results
+  episodes_per_dataset_chunk: 250
+  save_agent_state: true
+  agent_state_save_frequency: 2000
+  config_file: sub_config_data_save_CartPole.yaml
+
+
+# ========================================
+# Visualization Settings
+# ========================================
+visualization:
+  enabled: true
+  config_file: sub_config_visualization_CartPole.yaml
