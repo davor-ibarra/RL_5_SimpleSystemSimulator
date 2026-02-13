@@ -61,19 +61,15 @@ class ResultHandler:
         # Buffer de filas de summary
         self.summary_rows = []
         
-        # Crear estructura de directorios
-        self.ensure_output_structure()
+        # Asegurar la creación del directorio
+        self._ensure_output_structure()
     
-    def ensure_output_structure(self):
+    def _ensure_output_structure(self):
         """
-        Crea la estructura de directorios necesaria para la corrida.
+        Crea el directorio necesario para la corrida.
         """
         # Crear directorio principal si no existe
         os.makedirs(self.output_dir, exist_ok=True)
-        
-        # Crear subdirectorios
-        os.makedirs(os.path.join(self.output_dir, 'chunks'), exist_ok=True)
-        os.makedirs(os.path.join(self.output_dir, 'agent_state'), exist_ok=True)
     
     def save_metadata(self, metadata_dict):
         """
@@ -208,7 +204,7 @@ class ResultHandler:
         Returns:
             str: Ruta completa del archivo del chunk
         """
-        return os.path.join(self.output_dir, 'chunks', f'episode_chunk_{chunk_id:04d}.json')
+        return os.path.join(self.output_dir, f'episodes_chunks_{chunk_id:04d}.json')
     
     def get_summary_filepath(self):
         """
@@ -229,7 +225,7 @@ class ResultHandler:
         Returns:
             str: Ruta completa del archivo de estado del agente
         """
-        return os.path.join(self.output_dir, 'agent_state', f'agent_state_ep_{episode_id:06d}.pkl')
+        return os.path.join(self.output_dir, f'agent_state_ep_{episode_id:06d}.pkl')
     
     # ==================== MÉTODOS DE LECTURA (para visualización) ====================
     

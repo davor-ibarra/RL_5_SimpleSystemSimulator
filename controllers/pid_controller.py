@@ -150,7 +150,7 @@ class PIDController:
         
         return self.control_action
     
-    def _apply_antiwindup_correction(self, e_sat):
+    def _apply_conditional_antiwindup_correction(self, e_sat):
         """
         Aplica corrección antiwindup al integrador.
         La corrección viene en unidades de [control_action]; se divide por ki
@@ -199,7 +199,7 @@ class PIDController:
             return
         
         # Reutilizar la misma lógica del antiwindup local
-        self._apply_antiwindup_correction(correction)
+        self._apply_conditional_antiwindup_correction(correction)
     
     def set_saturation_status(self, is_saturated, u_total_raw, u_total_saturated):
         """

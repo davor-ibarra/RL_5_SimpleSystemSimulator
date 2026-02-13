@@ -173,7 +173,7 @@ class MetricCollector:
         self.result_handler.finalize_run()
     
     # ── helpers de aplanamiento ──────────────────────────────────────────
-    
+    # ESTO DEBERÍA SER ELIMINADO YA QUE LOS RECORDS DE CADA COMPONENTE DEBERÍAN EXPONERSE YA LISTOS PARA SU RECOLECCIÓN
     def _flatten_step_data(self, dynamic_system_state_norm_dict,
                            dynamic_system_params_record,
                            controller_state_record, current_time):

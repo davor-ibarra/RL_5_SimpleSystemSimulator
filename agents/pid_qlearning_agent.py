@@ -160,7 +160,7 @@ class PIDQLearningAgent:
         indices = []
         
         for var_name in self.agent_state_vars[agent_name]:
-            value = agent_state.get(var_name)
+            value = agent_state[var_name]
             
             if value is None:
                 return None
@@ -286,19 +286,19 @@ class PIDQLearningAgent:
         
         return learn_info
     
-    def _get_reward_for_agent(self, agent_name, reward_info):
+    def _get_reward_for_agent(self, agent_name, reward_for_learning):
         """
         Obtiene la recompensa para un agente desde assign_internal_reward_dict.
         RewardCalculatorBase ya resuelve la asignación según el approach configurado.
         
         Args:
             agent_name (str): Nombre del agente
-            reward_info (dict): Información de recompensa
+            reward_for_learning (dict): Recompensa para el agente
             
         Returns:
             float: Recompensa para el agente
         """
-        return reward_info['assign_internal_reward_dict'].get(agent_name, 0.0)
+        return reward_for_learning[agent_name]
     
     def get_params_dict(self):
         """

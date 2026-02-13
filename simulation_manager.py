@@ -230,19 +230,16 @@ class SimulationManager:
                 controller_state_record,
                 self.dynamic_system_base.current_time
             )
-            
-            # 2.5. Acumular record plano para MetricProcessing
-            flat_step_records.append(self._flatten_controller_record(controller_state_record))
-            
-            # 2.6. Actualizar estado normalizado previo para siguiente step
+
+            # 2.5. Actualizar estado normalizado previo para siguiente step
             prev_dynamic_system_state_norm_dict = current_state_dict
             
-            # 2.7. Si terminó, cortar el loop inmediatamente
+            # 2.6. Si terminó, cortar el loop inmediatamente
             if terminated:
                 break
         
         # 3. Procesar métricas del intervalo (interval-level)
-        processed_metrics_dict = self.metric_processing.process_interval_metrics(flat_step_records)
+        processed_metrics_dict = self.metric_processing.process_interval_metrics()
         
         # 4. Calcular recompensa del intervalo (interval-level)
         # Tiempo al final del intervalo para cálculo de decay en goal_bonus
@@ -273,23 +270,6 @@ class SimulationManager:
         }
         
         return interval_result
-    
-    def _flatten_controller_record(self, controller_state_record):
-        """
-        Aplana un controller_state_record nested a un dict plano.
-        {ctrl_name: {signal: val}, global_controller: {var: val}} → {signal: val, var: val, ...}
-        
-        Args:
-            controller_state_record (dict): Record anidado del controlador
-            
-        Returns:
-            dict: Dict plano con llaves canónicas
-        """
-        flat = {}
-        for section_name, section_data in controller_state_record.items():
-            if isinstance(section_data, dict):
-                flat.update(section_data)
-        return flat
     
     def _build_interval_flat_data(self, interval_result, decision_id, step_idx_global, actions_dict):
         """

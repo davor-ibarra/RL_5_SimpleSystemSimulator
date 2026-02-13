@@ -90,56 +90,33 @@ class MetricProcessing:
         """
         pass
     
-    def process_interval_metrics(self, flat_step_records):
+    def process_interval_metrics(self):
         """
+        [PLACEHOLDER] -> Debería traer los step_records del intervalo desde el collector con método get_step_records()
         Procesa las series de pasos del intervalo en métricas normalizadas.
-        
-        Args:
-            flat_step_records (list[dict]): Lista de dicts planos por step.
-                Cada dict tiene llaves canónicas: error_<var>, control_action_<var>,
-                kp_<var>, control_action_total, etc.
+
             
         Returns:
             dict: processed_metrics_dict con estructura de 3 secciones
+                - reward_component: {var_obj: {L_e, L_edot, ...}}
+                - extra_reward_component: {error_<var_obj>: [serie], ...}
+                - metrics_info: {}
         """
-        processed_metrics = {
-            "reward_component": {},
-            "extra_reward_component": {},
-            "metrics_info": {}
-        }
-        
-        # 1. Procesar reward_component por var_obj (features L_*)
-        for var_obj in self.var_obj_to_controller:
-            var_metrics = self._process_var_obj_metrics(flat_step_records, var_obj)
-            processed_metrics["reward_component"][var_obj] = var_metrics
-        
-        # 2. Procesar global_vars SOLO si está definido en config
-        norm_params = self.normalization_config['params']
-        if 'global_vars' in norm_params:
-            global_vars_config = norm_params['global_vars']
-            global_metrics = self._process_global_vars(flat_step_records, global_vars_config)
-            processed_metrics["reward_component"]["global_vars"] = global_metrics
-        
-        # 3. Construir extra_reward_component: crudos planos (series completas) por var_obj
-        extra_crudos = self._extract_raw_series_for_extras(flat_step_records)
-        processed_metrics["extra_reward_component"] = extra_crudos
-        
-        return processed_metrics
     
-    def _process_var_obj_metrics(self, flat_step_records, var_obj):
+    def _process_var_obj_metrics(self, step_records, var_obj):
         """
         Procesa métricas para un var_obj específico.
         Mapea señales del PID a features (L_e, L_edot, L_I, L_u, L_delta_u).
         Aplica normalización solo si enabled=true en config.
         
         Args:
-            flat_step_records (list[dict]): Lista de dicts planos por step
+            step_records (list[dict]): Lista de dicts planos por step
             var_obj (str): Variable objetivo
             
         Returns:
             dict: Features {L_e, L_edot, L_I, L_u, L_delta_u}
         """
-        if not flat_step_records:
+        if not step_records:
             return {}
         
         # Mapeo de feature_key → signal_key (llaves canónicas del PID)
@@ -161,7 +138,7 @@ class MetricProcessing:
         
         for feature_key, signal_key in signal_mapping.items():
             # Extraer valores de la serie
-            values = self._extract_signal_series(flat_step_records, signal_key)
+            values = self._extract_signal_series(step_records, signal_key)
             
             # Si no hay valores, continuar sin agregar esta feature
             if not values:
@@ -189,18 +166,18 @@ class MetricProcessing:
         
         return features
     
-    def _process_global_vars(self, flat_step_records, global_vars_config):
+    def _process_global_vars(self, step_records, global_vars_config):
         """
         Procesa variables globales SOLO si están definidas en config.
         
         Args:
-            flat_step_records (list[dict]): Lista de dicts planos por step
+            step_records (list[dict]): Lista de dicts planos por step
             global_vars_config (dict): Config de variables globales
             
         Returns:
             dict: Features globales
         """
-        if not flat_step_records:
+        if not step_records:
             return {}
         
         global_metrics = {}
@@ -209,7 +186,7 @@ class MetricProcessing:
         
         for var_name, var_config in global_vars_config.items():
             # Extraer serie directamente por llave plana
-            values = self._extract_signal_series(flat_step_records, var_name)
+            values = self._extract_signal_series(step_records, var_name)
             
             if not values:
                 continue
@@ -227,14 +204,14 @@ class MetricProcessing:
         
         return global_metrics
     
-    def _extract_raw_series_for_extras(self, flat_step_records):
+    def _extract_raw_series_for_extras(self, step_records):
         """
         Extrae series crudas planas por var_obj para extra_reward_component.
         Incluye la serie completa del intervalo para que bonus/penalty puedan
         evaluar si la condición se cumplió durante el intervalo.
         
         Args:
-            flat_step_records (list[dict]): Lista de dicts planos por step
+            step_records (list[dict]): Lista de dicts planos por step
             
         Returns:
             dict: Crudos planos {error_<var_obj>: [lista], ...}
@@ -244,29 +221,29 @@ class MetricProcessing:
         for var_obj in self.var_obj_to_controller:
             # Extraer error crudo (señal principal para bonus/penalty)
             error_key = f'error_{var_obj}'
-            error_series = self._extract_signal_series(flat_step_records, error_key)
+            error_series = self._extract_signal_series(step_records, error_key)
             extras[error_key] = error_series
             
             # Extraer control_action crudo (para penalty de esfuerzo)
             action_key = f'control_action_{var_obj}'
-            action_series = self._extract_signal_series(flat_step_records, action_key)
+            action_series = self._extract_signal_series(step_records, action_key)
             extras[action_key] = action_series
         
         return extras
     
-    def _extract_signal_series(self, flat_step_records, signal_name):
+    def _extract_signal_series(self, step_records, signal_name):
         """
         Extrae una serie de valores de una señal por llave plana.
         
         Args:
-            flat_step_records (list[dict]): Lista de dicts planos por step
+            step_records (list[dict]): Lista de dicts planos por step
             signal_name (str): Llave canónica de la señal (e.g. error_pendulum_angle)
             
         Returns:
             list: Lista de valores (solo numéricos finitos)
         """
         values = []
-        for record in flat_step_records:
+        for record in step_records:
             if signal_name in record:
                 val = record[signal_name]
                 if isinstance(val, (int, float)) and np.isfinite(val):
