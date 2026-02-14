@@ -105,8 +105,8 @@ class SimulationManager:
         decision_id = 0
         
         # 3. Inicializar estado previo necesario para decisiones
-        self.prev_dynamic_system_state_dict = self.dynamic_system_base.current_state_dict
-        self.prev_dynamic_system_state_norm_dict = self.dynamic_system_base.current_state_norm_dict
+        self.prev_dynamic_system_state_dict = self.dynamic_system_base.get_dynamic_system_state('raw')
+        self.prev_dynamic_system_state_norm_dict = self.dynamic_system_base.get_dynamic_system_state('normalized')
         current_controller_gains = self._get_controller_gains_dict()
         self.prev_agent_state = self.agent_base.build_agent_state(self.prev_dynamic_system_state_dict, current_controller_gains)
         
@@ -148,12 +148,12 @@ class SimulationManager:
             n_steps_executed = interval_result['interval_metadata']['n_steps_executed']
             terminated = interval_result['interval_level_data']['simulation_state_dict']['terminated']
             termination_reason = interval_result['interval_level_data']['simulation_state_dict']['termination_reason']
-            total_reward += interval_result['interval_level_data']['reward_info']['global_interval_reward']
+            total_reward += interval_result['interval_level_data']['global_interval_reward']
             step_idx_global += n_steps_executed
             current_time_sec += n_steps_executed * self.dt_sec
             decision_id += 1
             total_agent_decisions += 1
-            self.prev_dynamic_system_state_dict = self.dynamic_system_base.current_state_dict
+            self.prev_dynamic_system_state_dict = self.dynamic_system_base.get_dynamic_system_state('raw')
             current_controller_gains = self._get_controller_gains_dict()
             self.prev_agent_state = self.agent_base.build_agent_state(self.prev_dynamic_system_state_dict, current_controller_gains)
             self.prev_actions_dict = actions_dict
@@ -163,21 +163,13 @@ class SimulationManager:
             termination_reason = "time_limit"
         
         # 8. Cierre del episodio: construir end_episode_data y commit a disco
-        # Extraer accumulated_band_bonus y goal_bonus desde extra_rewards_handler
-        accumulated_band_bonus = 0.0
-        goal_bonus = 0.0
-        if hasattr(self.reward_calculator, 'extra_rewards_handler') and self.reward_calculator.extra_rewards_handler:
-            erh = self.reward_calculator.extra_rewards_handler
-            accumulated_band_bonus = erh.accumulated_band_bonus
-            last_record = erh.last_extra_reward_params_record
-            # Sumar todos los goal bonus per-var_obj del último intervalo
-            goal_bonus = sum(v for k, v in last_record.items() if k.startswith('extra_bonus_goal_'))
+        episode_reward_summary = self.reward_calculator.get_episode_summary_rewards()
         
         end_episode_data = {
             'end_terminated': terminated,
             'end_termination_reason': termination_reason,
-            'accumulated_band_bonus': accumulated_band_bonus,
-            'goal_bonus': goal_bonus,
+            'accumulated_band_bonus': episode_reward_summary['accumulated_band_bonus'],
+            'goal_bonus': episode_reward_summary['goal_bonus'],
             'total_reward': total_reward,
             'total_agent_decisions': total_agent_decisions,
             'episode_wall_time_sec': current_time_sec
@@ -185,8 +177,7 @@ class SimulationManager:
         self.metric_collector.on_episode_end(episode_id, end_episode_data)
         
         # 9. Guardar estado del agente según periodicidad
-        data_handling = self.config_main.get('data_handling', {})
-        save_period = data_handling.get('agent_state_save_frequency', 0)
+        save_period = self.config_main['data_handling']['agent_state_save_frequency']
         if save_period and (episode_id + 1) % save_period == 0:
             self.result_handler.save_agent_state_learn_dict(self.agent_base.get_agent_state_learn_dict(), episode_id)
     
@@ -214,25 +205,23 @@ class SimulationManager:
         for step in range(self.steps_per_interval):
             n_steps_executed += 1
             
-            # 2.1. Calcular acción total de control y registro del controlador
-            u_total, controller_state_record = self.controller_base.compute_control(prev_dynamic_system_state_norm_dict)
+            # 2.1. Calcular acción total de control
+            u_total, _ = self.controller_base.compute_control(prev_dynamic_system_state_norm_dict)
             
             # 2.2. Integrar el sistema dinámico un paso
-            current_state_dict, dynamic_system_params_record = self.dynamic_system_base.step(u_total, self.dt_sec)
+            current_state_norm_dict, _ = self.dynamic_system_base.step(u_total, self.dt_sec)
             
             # 2.3. Evaluar condición de término
             terminated, termination_reason = self.dynamic_system_base.check_termination()
             
-            # 2.4. Registrar step en el collector (dicts crudos → el collector aplana)
-            self.metric_collector.on_step(
-                current_state_dict,
-                dynamic_system_params_record,
-                controller_state_record,
-                self.dynamic_system_base.current_time
-            )
+            # 2.4. Registrar step en el collector (dict plano vía get_records())
+            step_flat_data = {'t_sec': self.dynamic_system_base.current_time}
+            step_flat_data.update(self.dynamic_system_base.get_records())
+            step_flat_data.update(self.controller_base.get_records())
+            self.metric_collector.on_step(step_flat_data)
 
             # 2.5. Actualizar estado normalizado previo para siguiente step
-            prev_dynamic_system_state_norm_dict = current_state_dict
+            prev_dynamic_system_state_norm_dict = current_state_norm_dict
             
             # 2.6. Si terminó, cortar el loop inmediatamente
             if terminated:
@@ -244,13 +233,13 @@ class SimulationManager:
         # 4. Calcular recompensa del intervalo (interval-level)
         # Tiempo al final del intervalo para cálculo de decay en goal_bonus
         end_time_sec = current_time_sec + n_steps_executed * self.dt_sec
-        reward_info = self.reward_calculator.calculate(processed_metrics_dict, termination_reason, end_time_sec)
+        reward_for_learning = self.reward_calculator.calculate(processed_metrics_dict, termination_reason, end_time_sec)
         
         # 5. Ejecutar aprendizaje del agente
         current_controller_gains = self._get_controller_gains_dict()
-        next_agent_state = self.agent_base.build_agent_state(current_state_dict, current_controller_gains)
+        next_agent_state = self.agent_base.build_agent_state(current_state_norm_dict, current_controller_gains)
         learn_info = self.agent_base.learn(
-            prev_agent_state, next_agent_state, actions_dict, reward_info, terminated
+            prev_agent_state, next_agent_state, actions_dict, reward_for_learning, terminated
         )
         
         # 6. Armar el interval_result con metadata completa
@@ -261,10 +250,8 @@ class SimulationManager:
                 'n_steps_executed': n_steps_executed
             },
             'interval_level_data': {
-                'reward_info': reward_info,
+                'global_interval_reward': self.reward_calculator._last_global_interval_reward,
                 'learn_info': learn_info,
-                'controller_info': {**actions_dict, **controller_state_record},
-                'processed_metrics_dict': processed_metrics_dict,
                 'simulation_state_dict': {'terminated': terminated, 'termination_reason': termination_reason}
             }
         }
@@ -274,15 +261,7 @@ class SimulationManager:
     def _build_interval_flat_data(self, interval_result, decision_id, step_idx_global, actions_dict):
         """
         Construye un dict plano con todas las llaves interval-level para el collector.
-        
-        Aplana:
-        - interval_metadata: interval_id, interval_start_step_idx, interval_end_step_idx,
-          interval_t_start_sec, interval_n_steps
-        - simulation_state_dict: terminated, termination_reason
-        - processed_metrics_dict.reward_component: L_<feature>_<var_obj> (e.g. L_e_pendulum_angle)
-        - reward_info: global_interval_reward, reward params, extra records
-        - learn_info: td_error_<agent>, q_value_<agent> (ya planas)
-        - actions_dict: action_<agent>
+        Fusiona records planos de cada componente vía get_records().
         
         Args:
             interval_result (dict): Resultado completo del intervalo
@@ -311,57 +290,22 @@ class SimulationManager:
         flat['terminated'] = sim_state['terminated']
         flat['termination_reason'] = sim_state['termination_reason']
         
-        # 3. Processed metrics: reward_component → L_<feature>_<var_obj>
-        processed = interval_level['processed_metrics_dict']
-        reward_component = processed['reward_component']
-        for var_obj, var_metrics in reward_component.items():
-            if isinstance(var_metrics, dict):
-                for feature_key, value in var_metrics.items():
-                    # feature_key es e.g. 'L_e' → flat key 'L_e_<var_obj>'
-                    flat[f'{feature_key}_{var_obj}'] = value
+        # 3. Processed metrics (L_<feature>_<var_obj>) — via MetricProcessing.get_records()
+        flat.update(self.metric_processing.get_records())
         
-        # 4. Reward info
-        reward_info = interval_level['reward_info']
-        flat['global_interval_reward'] = reward_info['global_interval_reward']
-        
-        # 4a. Reward per agent
-        assign = reward_info['assign_internal_reward_dict']
-        for agent_name, reward_val in assign.items():
-            flat[f'reward_{agent_name}'] = reward_val
-        
-        # 4b. Principal record (L_<agent> total loss per agent, etc.)
-        principal_record = reward_info['reward_params_record']['principal_record']
-        # controller_rewards → L_<agent_name>
-        controller_rewards = principal_record['controller_rewards'] if isinstance(principal_record, dict) else {}
-        for var_obj, loss_val in controller_rewards.items():
-            flat[f'L_{var_obj}'] = loss_val
-        
-        # Remaining principal_record keys (principal_reward, lagrangian_total, aggregated L_* terms)
-        if isinstance(principal_record, dict):
-            for key, value in principal_record.items():
-                if key == 'controller_rewards':
-                    continue  # Ya procesado arriba
-                if isinstance(value, (int, float, bool, str)):
-                    flat[key] = value
-        
-        # 4c. Extra record (extra_goal_bonus, extra_bandwidth_bonus, etc.)
-        extra_record = reward_info['reward_params_record']['extra_record']
-        flat.update(extra_record)
+        # 4. Reward records (global_interval_reward, per-agent, principal, extra) — via get_records()
+        flat.update(self.reward_calculator.get_records())
         
         # 5. Learn info (td_error_<agent>, q_value_<agent> — ya planas)
         learn_info = interval_level['learn_info']
-        if isinstance(learn_info, dict):
-            flat.update(learn_info)
+        flat.update(learn_info)
         
         # 6. Actions: action_<agent_name> → decisions
         vars_decision = actions_dict['vars_decision']
         flat.update(vars_decision)
         
-        # 7. Agent parameters (epsilon, learning_rate)
-        if hasattr(self.agent_base, 'epsilon'):
-            flat['epsilon'] = self.agent_base.epsilon
-        if hasattr(self.agent_base, 'learning_rate'):
-            flat['learning_rate'] = self.agent_base.learning_rate
+        # 7. Agent parameters (epsilon, learning_rate, Q-stats) — via get_records()
+        flat.update(self.agent_base.get_records())
         
         return flat
     
@@ -459,7 +403,7 @@ class SimulationManager:
         # Para cada agente habilitado, derivar controller_name y gain_type
         agents_config = self.config_main['agent_base']['agent_config']['agents']
         for agent_name, agent_cfg in agents_config.items():
-            if not agent_cfg.get('enabled_agent', False):
+            if not agent_cfg['enabled_agent']:
                 continue
             
             # El agent_name sigue el patrón: {gain_type}_{var_obj}

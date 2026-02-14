@@ -153,8 +153,8 @@ class ResultHandler:
         df = pd.DataFrame(self.summary_rows)
         
         # Ordenar columnas según configuración si existe
-        config = self.config_data_save.get('data_save', {}).get('config', {})
-        first_cols = config.get('summary_first_cols', [])
+        config = self.config_data_save['data_save']['config']
+        first_cols = config['summary_first_cols']
         
         if first_cols:
             # Reordenar columnas: primero las especificadas, luego el resto

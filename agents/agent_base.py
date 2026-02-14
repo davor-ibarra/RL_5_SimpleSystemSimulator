@@ -69,7 +69,7 @@ class AgentBase:
         """
         return self.agent_impl.select_action(agent_state)
     
-    def learn(self, prev_agent_state, next_agent_state, actions_dict, reward_info, terminated):
+    def learn(self, prev_agent_state, next_agent_state, actions_dict, reward_for_learning, terminated):
         """
         Actualiza el agente basado en la experiencia.
         
@@ -77,22 +77,27 @@ class AgentBase:
             prev_agent_state (dict): Estado previo
             next_agent_state (dict): Estado siguiente
             actions_dict (dict): Acciones tomadas
-            reward_info (dict): Información de recompensa
+            reward_for_learning (dict): {agent_name: reward} — recompensas por agente
             terminated (bool): Si el episodio terminó
             
         Returns:
             dict: learn_info con métricas de aprendizaje
         """
         return self.agent_impl.learn(
-            prev_agent_state, next_agent_state, actions_dict, reward_info, terminated
+            prev_agent_state, next_agent_state, actions_dict, reward_for_learning, terminated
         )
     
-    def get_params_dict(self):
+    def get_records(self):
         """
-        Expone parámetros de telemetría ligera del agente (estadísticas agregadas).
+        Retorna dict plano con TODOS los parámetros del agente para el MetricCollector.
+        Método estándar de registro — reemplaza get_params_dict() como interfaz
+        para la recolección de métricas.
+        
+        Incluye: epsilon, learning_rate, estadísticas Q-table por agente,
+        y cualquier otro parámetro expuesto por el agente específico.
         
         Returns:
-            dict: Parámetros actuales del agente (epsilon, learning_rate, estadísticas Q)
+            dict: Registro plano interval-level del agente
         """
         return self.agent_impl.get_params_dict()
     

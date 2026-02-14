@@ -41,9 +41,9 @@ class ExtraRewardsHandler:
         self.config = config
         
         # Extraer configuraciones de cada approach
-        self.penalty_config = config.get('penalty_approach', {})
-        self.bonus_config = config.get('bonus_approach', {})
-        self.conditional_config = config.get('conditional_approach', {})
+        self.penalty_config = config['penalty_approach']
+        self.bonus_config = config['bonus_approach']
+        self.conditional_config = config['conditional_approach']
         
         # Estado acumulativo para episodio
         self.accumulated_band_bonus = 0.0

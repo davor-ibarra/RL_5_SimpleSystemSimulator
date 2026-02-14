@@ -103,6 +103,27 @@ class MetricProcessing:
                 - metrics_info: {}
         """
     
+    def get_records(self):
+        """
+        Retorna dict plano con las métricas procesadas del intervalo.
+        Aplana reward_component a llaves canónicas: L_<feature>_<var_obj>.
+        
+        Debe llamarse DESPUÉS de process_interval_metrics().
+        
+        Returns:
+            dict: Registro plano interval-level de métricas procesadas
+        """
+        records = {}
+        
+        # Aplanar reward_component: {var_obj: {L_e: val, ...}} → {L_e_<var_obj>: val, ...}
+        if hasattr(self, '_last_processed_metrics') and self._last_processed_metrics:
+            reward_component = self._last_processed_metrics['reward_component']
+            for var_obj, var_metrics in reward_component.items():
+                for feature_key, value in var_metrics.items():
+                    records[f'{feature_key}_{var_obj}'] = value
+        
+        return records
+    
     def _process_var_obj_metrics(self, step_records, var_obj):
         """
         Procesa métricas para un var_obj específico.

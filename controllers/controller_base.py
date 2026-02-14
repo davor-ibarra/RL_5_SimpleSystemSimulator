@@ -170,9 +170,10 @@ class ControllerBase:
             'delta_u_total': self.delta_u_total
         }
         
-        # Añadir contribuciones por controlador
+        # Añadir contribuciones por controlador usando var_obj como sufijo
         for controller_name in controller_names:
-            global_controller[f'u_contrib_{controller_name}'] = individual_actions[controller_name]
+            var_obj = controllers[controller_name].var_obj
+            global_controller[f'u_contrib_{var_obj}'] = individual_actions[controller_name]
         
         # Construir record completo
         record = {'global_controller': global_controller}
@@ -183,3 +184,31 @@ class ControllerBase:
             record[controller_name] = controller.get_controller_record()
         
         return record
+
+    def get_records(self):
+        """
+        Retorna dict plano con llaves canónicas para el MetricCollector.
+        Fusiona señales globales + señales per-controller en un solo dict.
+        
+        Returns:
+            dict: Registro plano step-level del controlador
+        """
+        records = {}
+        
+        # Señales globales
+        records['u_total'] = self.u_total
+        records['u_total_raw'] = self.u_total_raw
+        records['u_total_saturated'] = self.u_total_saturated
+        records['is_saturated_global'] = self.is_saturated_global
+        records['prev_u_total'] = self.prev_u_total
+        records['delta_u_total'] = self.delta_u_total
+        
+        # Contribuciones y records per-controller (usando var_obj como sufijo)
+        for controller_name, controller in self.controllers.items():
+            records[f'u_contrib_{controller.var_obj}'] = controller.control_action
+            
+            # get_controller_record() ya retorna llaves planas con var_obj
+            controller_record = controller.get_controller_record()
+            records.update(controller_record)
+        
+        return records

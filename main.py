@@ -38,15 +38,15 @@ def main():
     instancia componentes → guarda metadata → corre simulación → ejecuta visualización post-run.
     """
     # 1. Cargar configuraciones (acceso directo, sin validación)
-    config_main = load_config('config/config_cart_pole.yaml')
+    config_main = load_config('config/config_CartPole.yaml')
     config_data_save = load_config('config/sub_config_data_save_CartPole.yaml')
     config_visualization = load_config('config/sub_config_visualization_CartPole.yaml')
     config_template_output = load_config('config/sub_config_template_output_CartPole.yaml')
     
     # 2. Construir run_id y output_dir
     run_id, timestamp = _build_run_id()
-    base_dir = config_main['output']['base_dir']
-    system_id = config_main['system']['system_name']
+    base_dir = config_main['data_handling']['output_root']
+    system_id = config_main['dynamic_system']['system_name']
     output_dir = _build_output_dir(base_dir, system_id, timestamp)
     
     # 3. Construir metadata
@@ -62,7 +62,7 @@ def main():
     _run_simulation(components['simulation_manager'])
     
     # 7. Ejecutar visualización post-run
-    _run_visualization(components['visualization_manager'], output_dir, config_visualization)
+    _run_visualization(components['visualization_manager'])
     
     print(f"[MAIN] Corrida completada. Resultados en: {output_dir}")
 
@@ -238,15 +238,13 @@ def _run_simulation(simulation_manager):
     simulation_manager.run_simulation()
 
 
-def _run_visualization(visualization_manager, output_dir, config_visualization):
+def _run_visualization(visualization_manager):
     """
     Ejecuta visualization_manager.run() solo post-run.
     VisualizationManager ya tiene vis_config_data y results_folder_path desde __init__.
     
     Args:
         visualization_manager: Instancia de VisualizationManager
-        output_dir (str): Directorio de salida (no usado, ya inyectado)
-        config_visualization (dict): Configuración (no usada, ya inyectada)
     """
     visualization_manager.run()
 

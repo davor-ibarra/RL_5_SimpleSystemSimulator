@@ -48,10 +48,10 @@ class CartPoleDynamicSystem:
         self.pinion_radius_m = self.dynamic_system_config['params']['pinion_radius_m']
         
         # Configuración de normalización de estado
-        self.normalization_config = self.dynamic_system_config.get('state_normalization', {})
-        self.normalization_enabled = self.normalization_config.get('enabled', False)
-        self.output_limits = self.normalization_config.get('output_limits', [-1.0, 1.0])
-        self.ranges_params = self.normalization_config.get('ranges_params', {})
+        self.normalization_config = self.dynamic_system_config['state_normalization']
+        self.normalization_enabled = self.normalization_config['enabled']
+        self.output_limits = self.normalization_config['output_limits']
+        self.ranges_params = self.normalization_config['ranges_params']
         
         # Estado del actuador
         self.cart_force = 0.0

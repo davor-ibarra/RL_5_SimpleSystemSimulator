@@ -75,13 +75,13 @@ class PIDController:
         Returns:
             float: Setpoint normalizado (o raw si normalización deshabilitada)
         """
-        normalization_config = self.config_main['dynamic_system'].get('state_normalization', {})
+        normalization_config = self.config_main['dynamic_system']['state_normalization']
         
-        if not normalization_config.get('enabled', False):
+        if not normalization_config['enabled']:
             return self.setpoint_raw
         
-        ranges_params = normalization_config.get('ranges_params', {})
-        output_limits = normalization_config.get('output_limits', [-1.0, 1.0])
+        ranges_params = normalization_config['ranges_params']
+        output_limits = normalization_config['output_limits']
         
         if self.var_obj not in ranges_params:
             return self.setpoint_raw

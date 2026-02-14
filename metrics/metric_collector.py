@@ -94,28 +94,18 @@ class MetricCollector:
         self.step_count = 0
         self.interval_count = 0
     
-    def on_step(self, dynamic_system_state_norm_dict, dynamic_system_params_record,
-                controller_state_record, current_time):
+    def on_step(self, step_flat_data):
         """
-        Registra un step: aplana los dicts crudos y hace append sobre las llaves activas.
+        Registra un step: hace append sobre las llaves activas.
+        Recibe un dict plano ya construido con get_records() de cada componente.
         
         Args:
-            dynamic_system_state_norm_dict (dict): Estado normalizado {var: val}
-            dynamic_system_params_record (dict): Record del sistema {raw_state: {...}, params: {...}}
-            controller_state_record (dict): Record del controlador {global_controller: {...}, <ctrl>: {...}}
-            current_time (float): Tiempo actual en segundos
+            step_flat_data (dict): Dict plano con llaves canónicas step-level
+                (t_sec, <var>_raw, <var>_norm, cart_force, error_<var_obj>, ...)
         """
-        # Aplanar todos los dicts crudos en un único dict plano
-        flat = self._flatten_step_data(
-            dynamic_system_state_norm_dict,
-            dynamic_system_params_record,
-            controller_state_record,
-            current_time
-        )
-        
         # Append sobre cada llave activa
         for key in self.step_keys:
-            self.step_data[key].append(flat.get(key))
+            self.step_data[key].append(step_flat_data[key])
         
         self.step_count += 1
     
@@ -129,7 +119,7 @@ class MetricCollector:
                 termination_reason, L_e_*, rewards, actions, learn_info, etc.)
         """
         for key in self.interval_keys:
-            self.interval_data[key].append(interval_flat_data.get(key))
+            self.interval_data[key].append(interval_flat_data[key])
         
         self.interval_count += 1
     
@@ -172,58 +162,3 @@ class MetricCollector:
         """
         self.result_handler.finalize_run()
     
-    # ── helpers de aplanamiento ──────────────────────────────────────────
-    # ESTO DEBERÍA SER ELIMINADO YA QUE LOS RECORDS DE CADA COMPONENTE DEBERÍAN EXPONERSE YA LISTOS PARA SU RECOLECCIÓN
-    def _flatten_step_data(self, dynamic_system_state_norm_dict,
-                           dynamic_system_params_record,
-                           controller_state_record, current_time):
-        """
-        Aplana los dicts crudos de un step en un dict plano con las llaves del template.
-        
-        Convenciones de mapeo:
-        - t_sec ← current_time
-        - <var>_raw ← dynamic_system_params_record['raw_state'][var]
-        - <var>_norm ← dynamic_system_state_norm_dict[var]
-        - <param> ← dynamic_system_params_record['params'][param]
-        - Llaves globales del controlador ← controller_state_record['global_controller']
-        - Llaves per-controller ← controller_state_record[<controller_name>]
-        
-        Args:
-            dynamic_system_state_norm_dict (dict): Estado normalizado
-            dynamic_system_params_record (dict): Record del sistema dinámico
-            controller_state_record (dict): Record del controlador
-            current_time (float): Tiempo actual
-            
-        Returns:
-            dict: Dict plano con todas las llaves disponibles
-        """
-        flat = {}
-        
-        # 1. Tiempo
-        flat['t_sec'] = current_time
-        
-        # 2. Estado dinámico raw (cada var → <var>_raw)
-        raw_state = dynamic_system_params_record.get('raw_state', {})
-        for var_name, value in raw_state.items():
-            flat[f'{var_name}_raw'] = value
-        
-        # 3. Estado dinámico normalizado (cada var → <var>_norm)
-        for var_name, value in dynamic_system_state_norm_dict.items():
-            flat[f'{var_name}_norm'] = value
-        
-        # 4. Parámetros del sistema (cart_force, etc.) — llaves planas
-        params = dynamic_system_params_record.get('params', {})
-        flat.update(params)
-        
-        # 5. Controlador global — llaves planas directas
-        global_ctrl = controller_state_record.get('global_controller', {})
-        flat.update(global_ctrl)
-        
-        # 6. Controladores individuales — llaves ya canónicas (error_<var>, kp_<var>, etc.)
-        for section_name, section_data in controller_state_record.items():
-            if section_name == 'global_controller':
-                continue
-            if isinstance(section_data, dict):
-                flat.update(section_data)
-        
-        return flat

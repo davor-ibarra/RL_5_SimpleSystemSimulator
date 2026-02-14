@@ -133,7 +133,8 @@ class RewardCalculatorBase:
     
     def calculate(self, processed_metrics_dict, termination_flag='unknown', current_time_sec=0.0):
         """
-        Calcula la recompensa del intervalo.
+        Calcula la recompensa del intervalo y retorna solo las recompensas 
+        asignadas a cada agente, listas para el aprendizaje.
         
         Args:
             processed_metrics_dict (dict): Métricas procesadas con estructura:
@@ -144,48 +145,89 @@ class RewardCalculatorBase:
             current_time_sec (float): Tiempo actual en el episodio [s]
             
         Returns:
-            dict: reward_info con:
-                - global_interval_reward: float
-                - assign_internal_reward_dict: {agent_name: float}
-                - reward_params_record: dict
+            dict: {agent_name: reward} — recompensas por agente para aprendizaje
         """
         reward_component = processed_metrics_dict['reward_component']
         extra_reward_component = processed_metrics_dict['extra_reward_component']
         
         # Inicializar defaults (en caso de que algún bloque esté deshabilitado)
         principal_reward = 0.0
-        principal_record = {}
+        self._last_principal_record = {}
         controller_rewards = {}
         extra_reward = 0.0
-        extra_record = {}
+        self._last_extra_record = {}
         
         # 1. Calcular recompensa principal        
         if self.principal_reward_impl:
-            principal_reward, principal_record, controller_rewards = self.principal_reward_impl.compute_reward(reward_component)
+            principal_reward, self._last_principal_record, controller_rewards = self.principal_reward_impl.compute_reward(reward_component)
         
         # 2. Calcular extra rewards (pasando termination_flag y current_time_sec)
         if self.extra_rewards_handler:
-            extra_reward, extra_record = self.extra_rewards_handler.evaluate(extra_reward_component, termination_flag, current_time_sec)
+            extra_reward, self._last_extra_record = self.extra_rewards_handler.evaluate(extra_reward_component, termination_flag, current_time_sec)
         
         # 3. Calcular global_interval_reward
-        global_interval_reward = principal_reward + extra_reward
+        self._last_global_interval_reward = principal_reward + extra_reward
         
         # 4. Asignar recompensas a nombres de agentes según reward_approach
-        assign_internal_reward_dict = self._assign_rewards(
-            global_interval_reward, controller_rewards, extra_reward
+        self._last_assign_internal_reward_dict = self._assign_rewards(
+            self._last_global_interval_reward, controller_rewards, extra_reward
         )
         
-        # 5. Construir reward_info completo
-        reward_info = {
-            'global_interval_reward': global_interval_reward,
-            'assign_internal_reward_dict': assign_internal_reward_dict,
-            'reward_params_record': {
-                'principal_record': principal_record,
-                'extra_record': extra_record
-            }
-        }
+        return self._last_assign_internal_reward_dict
+    
+    def get_records(self):
+        """
+        Retorna dict plano con TODOS los parámetros de reward para el MetricCollector.
+        Recoge y registra los parámetros relevantes de cada subcomponente
+        (principal_reward_impl, extra_rewards_handler).
         
-        return reward_info
+        Returns:
+            dict: Registro plano interval-level del sistema de recompensas
+        """
+        records = {}
+        
+        # Recompensa global
+        records['global_interval_reward'] = self._last_global_interval_reward
+        
+        # Recompensas per-agent
+        for agent_name, reward_val in self._last_assign_internal_reward_dict.items():
+            records[f'reward_{agent_name}'] = reward_val
+        
+        # Principal record (aplanar, separando controller_rewards)
+        if self._last_principal_record:
+            for key, value in self._last_principal_record.items():
+                if key == 'controller_rewards':
+                    # controller_rewards → L_<var_obj>
+                    for var_obj, loss_val in value.items():
+                        records[f'L_{var_obj}'] = loss_val
+                elif isinstance(value, (int, float, bool, str)):
+                    records[key] = value
+        
+        # Extra record (ya viene plano desde ExtraRewardsHandler)
+        records.update(self._last_extra_record)
+        
+        return records
+    
+    def get_episode_summary_rewards(self):
+        """
+        Retorna resumen de rewards acumulados del episodio.
+        Encapsula acceso a internos de extra_rewards_handler.
+        
+        Returns:
+            dict: {accumulated_band_bonus, goal_bonus}
+        """
+        accumulated_band_bonus = 0.0
+        goal_bonus = 0.0
+        
+        if self.extra_rewards_handler:
+            accumulated_band_bonus = self.extra_rewards_handler.accumulated_band_bonus
+            last_record = self.extra_rewards_handler.last_extra_reward_params_record
+            goal_bonus = sum(v for k, v in last_record.items() if k.startswith('extra_bonus_goal_'))
+        
+        return {
+            'accumulated_band_bonus': accumulated_band_bonus,
+            'goal_bonus': goal_bonus
+        }
     
     def _assign_rewards(self, global_reward, controller_rewards, extra_reward):
         """
@@ -258,3 +300,4 @@ class RewardCalculatorBase:
             assign_dict[agent_name] = controller_rewards[var_obj]
         
         return assign_dict
+

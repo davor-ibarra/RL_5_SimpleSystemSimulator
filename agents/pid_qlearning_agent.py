@@ -48,10 +48,10 @@ class PIDQLearningAgent:
         self.gain_step = self.config_agent['agent_config']['actions']['delta_gain']
         
         # Valor inicial de Q-table
-        self.q_init_value = self.config_agent.get('q_init_value', 0.0)
+        self.q_init_value = self.config_agent['q_init_value']
         
         # Modo de recompensa
-        self.reward_mode = config_main['reward_setup']['reward_config']['reward_mode']
+        self.reward_mode = config_main['reward_calculator']['reward_config']['reward_mode']
         
         # Construir espacio de estados (una sola vez)
         self._build_state_space()
@@ -98,7 +98,7 @@ class PIDQLearningAgent:
         
         # Segunda pasada: por cada agente habilitado
         for var_name, var_cfg in agents_config.items():
-            if not var_cfg.get('enabled_agent', False):
+            if not var_cfg['enabled_agent']:
                 continue
             
             agent_name = var_name
@@ -106,7 +106,7 @@ class PIDQLearningAgent:
             
             # Variables de estado: primero la ganancia propia, luego state_vars
             state_vars = [agent_name]
-            for sv in var_cfg.get('state_vars', []):
+            for sv in var_cfg['state_vars']:
                 if sv in self.var_to_idx and sv != agent_name:
                     state_vars.append(sv)
             
@@ -239,7 +239,7 @@ class PIDQLearningAgent:
         
         return actions_dict
     
-    def learn(self, prev_agent_state, next_agent_state, actions_dict, reward_info, terminated):
+    def learn(self, prev_agent_state, next_agent_state, actions_dict, reward_for_learning, terminated):
         """
         Actualiza Q-tables usando Q-learning.
         
@@ -247,7 +247,7 @@ class PIDQLearningAgent:
             prev_agent_state (dict): Estado previo
             next_agent_state (dict): Estado siguiente
             actions_dict (dict): Acciones tomadas
-            reward_info (dict): Información de recompensa
+            reward_for_learning (dict): {agent_name: reward} — recompensas por agente
             terminated (bool): Si el episodio terminó
             
         Returns:
@@ -263,7 +263,7 @@ class PIDQLearningAgent:
                 continue
             
             action_idx = actions_dict['vars_decision'][f'action_{agent_name}']
-            reward = self._get_reward_for_agent(agent_name, reward_info)
+            reward = self._get_reward_for_agent(agent_name, reward_for_learning)
             
             q_table = self.q_tables[agent_name]
             current_q = q_table[s_indices + (action_idx,)]

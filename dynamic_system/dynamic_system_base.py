@@ -183,3 +183,49 @@ class DynamicSystemBase:
             dict: Parámetros del sistema dinámico
         """
         return self.dynamic_system_impl.get_params_dict()
+
+    def get_dynamic_system_state(self, mode):
+        """
+        Retorna el estado actual del sistema dinámico según el modo solicitado.
+        
+        Args:
+            mode (str): 'raw' para estado físico, 'normalized' para estado normalizado
+            
+        Returns:
+            dict: Estado actual del sistema dinámico
+        """
+        if mode == 'raw':
+            return self.current_state_dict
+        elif mode == 'normalized':
+            return self.current_state_norm_dict
+        else:
+            raise ValueError(f"Modo no reconocido: {mode}. Usar 'raw' o 'normalized'.")
+
+    def get_records(self):
+        """
+        Retorna dict plano con llaves canónicas para el MetricCollector.
+        
+        Llaves generadas:
+            - <var_name>_raw: estado físico por variable
+            - <var_name>_norm: estado normalizado por variable
+            - <param_name>: parámetros del sistema (e.g. cart_force)
+            
+        Returns:
+            dict: Registro plano step-level del sistema dinámico
+        """
+        records = {}
+        
+        # Estado físico con sufijo _raw
+        for var_name, value in self.current_state_dict.items():
+            records[f'{var_name}_raw'] = value
+        
+        # Estado normalizado con sufijo _norm
+        for var_name, value in self.current_state_norm_dict.items():
+            records[f'{var_name}_norm'] = value
+        
+        # Parámetros adicionales del sistema (e.g. cart_force)
+        params = self.get_params_dict()
+        for param_name, value in params.items():
+            records[param_name] = value
+        
+        return records
