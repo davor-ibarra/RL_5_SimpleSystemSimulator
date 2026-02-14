@@ -170,12 +170,13 @@ class RewardCalculatorBase:
         
         # 4. Asignar recompensas a nombres de agentes según reward_approach
         self._last_assign_internal_reward_dict = self._assign_rewards(
-            self._last_global_interval_reward, controller_rewards, extra_reward
+            self._last_global_interval_reward, controller_rewards, extra_reward, reward_component
         )
         
         return self._last_assign_internal_reward_dict
     
     def get_records(self):
+
         """
         Retorna dict plano con TODOS los parámetros de reward para el MetricCollector.
         Recoge y registra los parámetros relevantes de cada subcomponente
@@ -229,7 +230,7 @@ class RewardCalculatorBase:
             'goal_bonus': goal_bonus
         }
     
-    def _assign_rewards(self, global_reward, controller_rewards, extra_reward):
+    def _assign_rewards(self, global_reward, controller_rewards, extra_reward, reward_component):
         """
         Asigna recompensas a agentes según el reward_approach.
         
@@ -237,6 +238,7 @@ class RewardCalculatorBase:
             global_reward (float): Recompensa global (principal + extras)
             controller_rewards (dict): {var_obj: principal_reward_por_lazo}
             extra_reward (float): Extra reward global
+            reward_component (dict): Componentes de recompensa para individual_reward
             
         Returns:
             dict: {agent_name: reward}

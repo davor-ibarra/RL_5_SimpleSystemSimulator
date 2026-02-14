@@ -144,9 +144,6 @@ class ControllerBase:
             correction = saturation_error * contribution_ratio
             controller.apply_antiwindup_correction(correction, self.dt_sec)
     
-    # _build_controller_state_record ELIMINADO por ser código muerto.
-    # La recolección de datos se hace exclusivamente vía get_records().
-
     def get_records(self):
         """
         Retorna dict plano con llaves canónicas para el MetricCollector.

@@ -124,9 +124,6 @@ class DynamicSystemBase:
         # Actualizar estado normalizado (dict)
         self.current_state_norm_dict = self.get_dynamic_system_state_to_dict(current_state_norm_arr)
         
-        # Construir registro con llaves claras (ELIMINADO - Recogido via get_records)
-        # dynamic_system_params_record...
-
         return self.current_state_norm_dict
     
     def check_termination(self):
