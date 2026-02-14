@@ -53,7 +53,7 @@ def main():
     metadata_dict = _build_metadata(run_id, timestamp, config_main, config_data_save, config_visualization)
     
     # 4. Instanciar componentes
-    components = _build_components(config_main, config_data_save, config_template_output, output_dir)
+    components = _build_components(config_main, config_data_save, config_template_output, config_visualization, output_dir)
     
     # 5. Guardar metadata
     _save_metadata(output_dir, metadata_dict, components['result_handler'])
@@ -145,7 +145,7 @@ def _save_metadata(output_dir, metadata_dict, result_handler):
     result_handler.save_metadata(metadata_dict)
 
 
-def _build_components(config_main, config_data_save, config_template_output, output_dir):
+def _build_components(config_main, config_data_save, config_template_output, config_visualization, output_dir):
     """
     Instancia explícitamente cada componente con toda la configuración
     y retorna un paquete único con:
