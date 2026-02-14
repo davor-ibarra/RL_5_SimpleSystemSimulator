@@ -50,6 +50,14 @@ class MetricProcessing:
         
         # Extraer config de normalización
         self.normalization_config = self._extract_normalization_config()
+        
+        # Extraer config de global_vars (puede no existir)
+        metric_processing_config = self.config_main['reward_base']['reward_calculation']['metric_processing']
+        norm_params = metric_processing_config['normalization']['params']
+        self.global_vars_config = norm_params['global_vars'] if 'global_vars' in norm_params else {}
+        
+        # Estado interno: resultado del último process_interval_metrics
+        self._last_processed_metrics = None
     
     def _build_var_obj_mapping(self):
         """
@@ -88,13 +96,15 @@ class MetricProcessing:
         """
         Resetea el procesador al inicio de un episodio.
         """
-        pass
+        self._last_processed_metrics = None
     
-    def process_interval_metrics(self):
+    def process_interval_metrics(self, step_records):
         """
-        [PLACEHOLDER] -> Debería traer los step_records del intervalo desde el collector con método get_step_records()
         Procesa las series de pasos del intervalo en métricas normalizadas.
-
+        
+        Args:
+            step_records (list[dict]): Lista de dicts planos por step
+                con llaves canónicas (error_<var_obj>, control_action_<var_obj>, ...)
             
         Returns:
             dict: processed_metrics_dict con estructura de 3 secciones
@@ -102,6 +112,35 @@ class MetricProcessing:
                 - extra_reward_component: {error_<var_obj>: [serie], ...}
                 - metrics_info: {}
         """
+        # 1. Reward component: métricas agregadas y normalizadas per-var_obj
+        reward_component = {}
+        for var_obj in self.var_obj_to_controller:
+            var_metrics = self._process_var_obj_metrics(step_records, var_obj)
+            reward_component[var_obj] = var_metrics
+        
+        # Global vars (solo si hay config)
+        if self.global_vars_config:
+            global_metrics = self._process_global_vars(step_records, self.global_vars_config)
+            if global_metrics:
+                reward_component['global_vars'] = global_metrics
+        
+        # 2. Extra reward component: series crudas planas per-var_obj
+        extra_reward_component = self._extract_raw_series_for_extras(step_records)
+        
+        # 3. Metrics info (placeholder para métricas futuras)
+        metrics_info = {}
+        
+        # Empaquetar resultado
+        processed_metrics_dict = {
+            'reward_component': reward_component,
+            'extra_reward_component': extra_reward_component,
+            'metrics_info': metrics_info
+        }
+        
+        # Almacenar para get_records()
+        self._last_processed_metrics = processed_metrics_dict
+        
+        return processed_metrics_dict
     
     def get_records(self):
         """

@@ -206,10 +206,10 @@ class SimulationManager:
             n_steps_executed += 1
             
             # 2.1. Calcular acción total de control
-            u_total, _ = self.controller_base.compute_control(prev_dynamic_system_state_norm_dict)
+            u_total = self.controller_base.compute_control(prev_dynamic_system_state_norm_dict)
             
             # 2.2. Integrar el sistema dinámico un paso
-            current_state_norm_dict, _ = self.dynamic_system_base.step(u_total, self.dt_sec)
+            current_state_norm_dict = self.dynamic_system_base.step(u_total, self.dt_sec)
             
             # 2.3. Evaluar condición de término
             terminated, termination_reason = self.dynamic_system_base.check_termination()
@@ -219,6 +219,9 @@ class SimulationManager:
             step_flat_data.update(self.dynamic_system_base.get_records())
             step_flat_data.update(self.controller_base.get_records())
             self.metric_collector.on_step(step_flat_data)
+            
+            # 2.4b. Acumular step record para MetricProcessing
+            flat_step_records.append(step_flat_data)
 
             # 2.5. Actualizar estado normalizado previo para siguiente step
             prev_dynamic_system_state_norm_dict = current_state_norm_dict
@@ -228,7 +231,7 @@ class SimulationManager:
                 break
         
         # 3. Procesar métricas del intervalo (interval-level)
-        processed_metrics_dict = self.metric_processing.process_interval_metrics()
+        processed_metrics_dict = self.metric_processing.process_interval_metrics(flat_step_records)
         
         # 4. Calcular recompensa del intervalo (interval-level)
         # Tiempo al final del intervalo para cálculo de decay en goal_bonus

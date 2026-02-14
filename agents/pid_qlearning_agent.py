@@ -50,9 +50,6 @@ class PIDQLearningAgent:
         # Valor inicial de Q-table
         self.q_init_value = self.config_agent['q_init_value']
         
-        # Modo de recompensa
-        self.reward_mode = config_main['reward_calculator']['reward_config']['reward_mode']
-        
         # Construir espacio de estados (una sola vez)
         self._build_state_space()
         
@@ -300,7 +297,7 @@ class PIDQLearningAgent:
         """
         return reward_for_learning[agent_name]
     
-    def get_params_dict(self):
+    def get_records(self):
         """
         Expone parámetros de telemetría ligera del agente (estadísticas agregadas).
         No usar para persistencia completa; ver get_agent_state_dict().

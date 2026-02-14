@@ -113,12 +113,10 @@ class ControllerBase:
         for controller_name in self.controllers.keys():
             self.controllers[controller_name].set_saturation_status(self.is_saturated_global, u_total_raw, u_total_saturated)
         
-        # 7. Construir registro del estado del controlador
-        controller_state_record = self._build_controller_state_record(
-            u_total_saturated, individual_actions, self.controllers, self.controllers.keys()
-        )
+        # 7. Construir registro del estado del controlador (ELIMINADO - Recogido via get_records)
+        # controller_state_record = ...
         
-        return u_total_saturated, controller_state_record
+        return u_total_saturated
     
     def _apply_antiwindup_corrections(self, individual_actions, saturation_error):
         """
@@ -146,44 +144,8 @@ class ControllerBase:
             correction = saturation_error * contribution_ratio
             controller.apply_antiwindup_correction(correction, self.dt_sec)
     
-    def _build_controller_state_record(self, u_total, individual_actions, 
-                                         controllers, controller_names):
-        """
-        Construye el registro del estado del controlador para el step actual.
-        
-        Args:
-            u_total (float): Acción de control total
-            individual_actions (dict): Acciones individuales por controlador
-            controllers (dict): Diccionario {controller_name: Controller}
-            controller_names (list): Lista ordenada de nombres de controladores
-            
-        Returns:
-            dict: Registro del estado del controlador
-        """
-        # Construir bloque global con todas las llaves del template
-        global_controller = {
-            'u_total': u_total,
-            'u_total_raw': self.u_total_raw,
-            'u_total_saturated': self.u_total_saturated,
-            'is_saturated_global': self.is_saturated_global,
-            'prev_u_total': self.prev_u_total,
-            'delta_u_total': self.delta_u_total
-        }
-        
-        # Añadir contribuciones por controlador usando var_obj como sufijo
-        for controller_name in controller_names:
-            var_obj = controllers[controller_name].var_obj
-            global_controller[f'u_contrib_{var_obj}'] = individual_actions[controller_name]
-        
-        # Construir record completo
-        record = {'global_controller': global_controller}
-        
-        # Agregar estado de cada controlador individual
-        for controller_name in controller_names:
-            controller = controllers[controller_name]
-            record[controller_name] = controller.get_controller_record()
-        
-        return record
+    # _build_controller_state_record ELIMINADO por ser código muerto.
+    # La recolección de datos se hace exclusivamente vía get_records().
 
     def get_records(self):
         """

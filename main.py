@@ -184,7 +184,7 @@ def _build_components(config_main, config_data_save, config_template_output, out
     reward_calculator = RewardCalculatorBase(config_main)
     
     # 6. ResultHandler
-    result_handler = ResultHandler(output_dir)
+    result_handler = ResultHandler(output_dir, config_data_save)
     
     # 7. MetricCollector (recibe ResultHandler + template de output)
     metric_collector = MetricCollector(result_handler, config_template_output)

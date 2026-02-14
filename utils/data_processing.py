@@ -188,7 +188,9 @@ def filter_data_by_config(data, save_config):
     
     # Extraer variables habilitadas
     enabled_params = set()
-    components = save_config.get('data_save', {}).get('components', {})
+    components = {}
+    if 'data_save' in save_config and 'components' in save_config['data_save']:
+        components = save_config['data_save']['components']
     
     for component_name, param_list in components.items():
         for param_config in param_list:

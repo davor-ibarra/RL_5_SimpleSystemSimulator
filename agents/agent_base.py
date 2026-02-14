@@ -99,7 +99,7 @@ class AgentBase:
         Returns:
             dict: Registro plano interval-level del agente
         """
-        return self.agent_impl.get_params_dict()
+        return self.agent_impl.get_records()
     
     def get_agent_state_learn_dict(self):
         """
