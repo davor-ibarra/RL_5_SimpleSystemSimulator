@@ -39,7 +39,7 @@ def main():
     """
     # 1. Cargar configuraciones (acceso directo, sin validación)
     config_main = load_config('config/config_CartPole.yaml')
-    config_data_save = load_config('config/sub_config_data_save_CartPole.yaml')
+    config_data_summary = load_config('config/sub_config_data_summary_CartPole.yaml')
     config_visualization = load_config('config/sub_config_visualization_CartPole.yaml')
     config_template_output = load_config('config/sub_config_template_output_CartPole.yaml')
     
@@ -50,10 +50,10 @@ def main():
     output_dir = _build_output_dir(base_dir, system_id, timestamp)
     
     # 3. Construir metadata
-    metadata_dict = _build_metadata(run_id, timestamp, config_main, config_data_save, config_visualization)
+    metadata_dict = _build_metadata(run_id, timestamp, config_main, config_data_summary, config_visualization)
     
     # 4. Instanciar componentes
-    components = _build_components(config_main, config_data_save, config_template_output, config_visualization, output_dir)
+    components = _build_components(config_main, config_data_summary, config_template_output, config_visualization, output_dir)
     
     # 5. Guardar metadata
     _save_metadata(output_dir, metadata_dict, components['result_handler'])
@@ -64,7 +64,7 @@ def main():
     # 7. Ejecutar visualización post-run
     _run_visualization(components['visualization_manager'])
     
-    print(f"[MAIN] Corrida completada. Resultados en: {output_dir}")
+    print(f"[MAIN] Simulación completada. Resultados en: {output_dir}")
 
 
 def load_config(path):
@@ -89,7 +89,7 @@ def _build_run_id():
     Returns:
         tuple: (run_id: str, timestamp: str)
     """
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M')
     run_id = f"run_{timestamp}"
     return run_id, timestamp
 
@@ -110,14 +110,14 @@ def _build_output_dir(base_dir, system_id, run_id):
     return output_dir
 
 
-def _build_metadata(run_id, timestamp, config_main, config_data_save, config_visualization):
+def _build_metadata(run_id, timestamp, config_main, config_data_summary, config_visualization):
     """
     Construye un snapshot declarativo de parámetros usados (lo que se ejecutó).
     
     Args:
         run_id (str): Identificador de corrida
         config_main (dict): Configuración principal
-        config_data_save (dict): Configuración de guardado de datos
+        config_data_summary (dict): Configuración de resumen de datos
         config_visualization (dict): Configuración de visualización
         
     Returns:
@@ -127,7 +127,7 @@ def _build_metadata(run_id, timestamp, config_main, config_data_save, config_vis
         'run_id': run_id,
         'timestamp': timestamp,
         'config_main': config_main,
-        'config_data_save': config_data_save,
+        'config_data_summary': config_data_summary,
         'config_visualization': config_visualization
     }
     return metadata
@@ -145,7 +145,7 @@ def _save_metadata(output_dir, metadata_dict, result_handler):
     result_handler.save_metadata(metadata_dict)
 
 
-def _build_components(config_main, config_data_save, config_template_output, config_visualization, output_dir):
+def _build_components(config_main, config_data_summary, config_template_output, config_visualization, output_dir):
     """
     Instancia explícitamente cada componente con toda la configuración
     y retorna un paquete único con:
@@ -161,7 +161,7 @@ def _build_components(config_main, config_data_save, config_template_output, con
     
     Args:
         config_main (dict): Configuración principal
-        config_data_save (dict): Configuración de guardado de datos
+        config_data_summary (dict): Configuración de resumen de datos
         config_template_output (dict): Template de output para MetricCollector
         output_dir (str): Directorio de salida
         
@@ -184,7 +184,7 @@ def _build_components(config_main, config_data_save, config_template_output, con
     reward_calculator = RewardCalculatorBase(config_main)
     
     # 6. ResultHandler
-    result_handler = ResultHandler(output_dir, config_data_save)
+    result_handler = ResultHandler(output_dir, config_data_summary)
     
     # 7. MetricCollector (recibe ResultHandler + template de output)
     metric_collector = MetricCollector(result_handler, config_template_output)
@@ -199,7 +199,7 @@ def _build_components(config_main, config_data_save, config_template_output, con
         metric_collector=metric_collector,
         result_handler=result_handler,
         config_main=config_main,
-        config_data_save=config_data_save,
+        config_data_summary=config_data_summary,
         output_dir=output_dir
     )
     

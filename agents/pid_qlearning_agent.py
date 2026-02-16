@@ -48,7 +48,7 @@ class PIDQLearningAgent:
         self.gain_step = self.config_agent['agent_config']['actions']['delta_gain']
         
         # Valor inicial de Q-table
-        self.q_init_value = self.config_agent['q_init_value']
+        self.q_init_value = 0.0
         
         # Construir espacio de estados (una sola vez)
         self._build_state_space()

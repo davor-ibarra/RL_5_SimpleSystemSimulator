@@ -24,10 +24,10 @@ plots:
       num_yticks: null
       show_legend: true
       legend_var: [
-                  {value: 'goal_reached', color: '#0077BB', label: 'Goal reached'},
+                  {value: 'stabilization_success', color: '#0077BB', label: 'Goal reached'},
                   {value: 'limit_exceeded', color: '#EE7733', label: 'Limit exceeded'},
                   {value: 'time_limit', color: '#BBBBBB', label: 'Time limit'},
-                  {value: 'agent_early_termination', color: '#009988', label: 'Agent patience'}
+                  #{value: 'agent_early_termination', color: '#009988', label: 'Agent patience'}
                 ]
       legend_pos: lower right # 'best', 'upper left', 'outside', etc.
       legend_fontsize: 'xx-large' # 'xx-small', 'x-small', 'small', 'medium', 'large', 'x-large', 'xx-large' or a number (e.g., 8, 10, 12)
@@ -39,7 +39,7 @@ plots:
   - type: line
     enabled: true
     source: summary # Use data from the summary DataFrame
-    x_variable: episode # Column for x-axis
+    x_variable: episode_id # Column for x-axis
     y_variable: total_reward # Column for y-axis
     output_filename: fig2_cumulative_reward_per_episode.png
     config:
@@ -72,8 +72,8 @@ plots:
   - type: line
     enabled: false
     source: summary
-    x_variable: episode
-    y_variable: time_duration
+    x_variable: episode_id
+    y_variable: final_t_sec
     output_filename: fig3_episode_duration_per_episode.png
     config:
       title: Episode Duration per Episode
@@ -105,7 +105,7 @@ plots:
   - type: line
     enabled: true
     source: summary
-    x_variable: episode
+    x_variable: episode_id
     y_variable: performance
     output_filename: fig4_performance_per_episode.png
     config:
@@ -139,9 +139,9 @@ plots:
     enabled: true
     name: "heatmap_time_vs_pendulum_angle"
     source: detailed # Use data from the list of all episode details
-    x_variable: time
-    y_variable: pendulum_angle
-    value_variable: time # Variable con la que se calcula el aggregation
+    x_variable: t_sec
+    y_variable: pendulum_angle_raw
+    value_variable: t_sec # Variable con la que se calcula el aggregation
     output_filename: fig5_heatmap_time_vs_pendulum_angle.png
     config:
       aggregation: count # mean, max, min, etc...
@@ -155,8 +155,8 @@ plots:
       ylabel_fontsize: 28
       xmin: 0
       xmax: 5
-      ymin: -0.17
-      ymax: 0.17
+      ymin: -0.34
+      ymax: 0.34
       tick_fontsize: 24
       xtick_rotation: 30
       num_xticks: 5
@@ -170,18 +170,18 @@ plots:
       log_scale: false # Use logarithmic color scale?
       grid_on: false
       filter_termination_reason: null
-  # --- Example Heatmap (Time vs Angle) goal_reached ---
+  # --- Example Heatmap (Time vs Angle) stabilization_success ---
   - type: heatmap
     enabled: true
-    name: "heatmap_time_vs_pendulum_angle(goal_reached)"
+    name: "heatmap_time_vs_pendulum_angle(stabilization_success)"
     source: detailed # Use data from the list of all episode details
-    x_variable: time
-    y_variable: pendulum_angle
-    value_variable: time # Variable con la que se calcula el aggregation
-    output_filename: fig6_heatmap_time_vs_pendulum_angle(goal_reached).png
+    x_variable: t_sec
+    y_variable: pendulum_angle_raw
+    value_variable: t_sec # Variable con la que se calcula el aggregation
+    output_filename: fig6_heatmap_time_vs_pendulum_angle(stabilization_success).png
     config:
       aggregation: count # mean, max, min, etc...
-      title: Heatmap - Time vs Pendulum Angle (goal_reached)
+      title: Heatmap - Time vs Pendulum Angle (stabilization_success)
       title_fontsize: 30
       figsize_w: 16
       figsize_h: 12
@@ -191,8 +191,8 @@ plots:
       ylabel_fontsize: 28
       xmin: 0
       xmax: 5
-      ymin: -0.17
-      ymax: 0.17
+      ymin: -0.34
+      ymax: 0.34
       tick_fontsize: 24
       xtick_rotation: 30
       num_xticks: 5
@@ -205,15 +205,15 @@ plots:
       bins: 500 # Number of bins for histogram2d
       log_scale: false # Use logarithmic color scale?
       grid_on: false
-      filter_termination_reason: ['goal_reached']
+      filter_termination_reason: ['stabilization_success']
   # --- Example Heatmap (Time vs  Angular Velocity) ---
   - type: heatmap
     enabled: false
     name: "heatmap_time_vs_pendulum_velocity"
     source: detailed # Use data from the list of all episode details
-    x_variable: time
-    y_variable: pendulum_velocity
-    value_variable: time # Variable con la que se calcula el aggregation
+    x_variable: t_sec
+    y_variable: pendulum_velocity_raw
+    value_variable: t_sec # Variable con la que se calcula el aggregation
     output_filename: fig7_heatmap_time_vs_pendulum_velocity.png
     config:
       aggregation: count # mean, max, min, etc...
@@ -227,8 +227,8 @@ plots:
       ylabel_fontsize: 16
       xmin: 0
       xmax: 5
-      ymin: -0.1
-      ymax: 0.1
+      ymin: -0.25
+      ymax: 0.25
       tick_fontsize: 14
       xtick_rotation: 30
       num_xticks: 5 
@@ -247,9 +247,9 @@ plots:
     enabled: true
     name: "heatmap_pendulum_angle_vs_pendulum_velocity"
     source: detailed
-    x_variable: pendulum_angle
-    y_variable: pendulum_velocity
-    value_variable: pendulum_angle # Variable con la que se calcula el aggregation
+    x_variable: pendulum_angle_raw
+    y_variable: pendulum_velocity_raw
+    value_variable: pendulum_angle_raw # Variable con la que se calcula el aggregation
     output_filename: fig8_heatmap_pendulum_angle_vs_pendulum_velocity.png
     config:
       aggregation: count # mean, max, min, etc...
@@ -261,8 +261,8 @@ plots:
       xlabel_fontsize: 28
       ylabel: Pendulum Velocity (rad/s)
       ylabel_fontsize: 28
-      xmin: -0.17
-      xmax: 0.17
+      xmin: -0.34
+      xmax: 0.34
       ymin: -0.25
       ymax: 0.25
       tick_fontsize: 24
@@ -283,9 +283,9 @@ plots:
     enabled: true
     name: "heatmap_cart_position_vs_cart_velocity"
     source: detailed
-    x_variable: cart_position
-    y_variable: cart_velocity
-    value_variable: cart_position # Variable con la que se calcula el aggregation
+    x_variable: cart_position_raw
+    y_variable: cart_velocity_raw
+    value_variable: cart_position_raw # Variable con la que se calcula el aggregation
     output_filename: fig8_heatmap_cart_position_vs_cart_velocity.png
     config:
       aggregation: count # mean, max, min, etc...
@@ -297,8 +297,8 @@ plots:
       xlabel_fontsize: 28
       ylabel: Cart Velocity (m/s)
       ylabel_fontsize: 28
-      xmin: -4.0
-      xmax: 4.0
+      xmin: -2.0
+      xmax: 2.0
       ymin: -2.0
       ymax: 2.0
       tick_fontsize: 24
@@ -319,9 +319,9 @@ plots:
     enabled: false
     name: "heatmap_time_vs_cart_position"
     source: detailed # Use data from the list of all episode details
-    x_variable: time
-    y_variable: cart_position
-    value_variable: time # Variable con la que se calcula el aggregation
+    x_variable: t_sec
+    y_variable: cart_position_raw
+    value_variable: t_sec # Variable con la que se calcula el aggregation
     output_filename: fig9_heatmap_time_vs_cart_position.png
     config:
       aggregation: count # mean, max, min, etc...
@@ -335,8 +335,8 @@ plots:
       ylabel_fontsize: 16
       xmin: 0
       xmax: 5
-      ymin: -3.0
-      ymax: 3.0
+      ymin: -2.0
+      ymax: 2.0
       tick_fontsize: 14
       xtick_rotation: 30
       num_xticks: 5
@@ -350,18 +350,18 @@ plots:
       log_scale: false # Use logarithmic color scale?
       grid_on: false
       filter_termination_reason: null
-  # --- Example Heatmap (Time vs Cart Position) goal_reached ---
+  # --- Example Heatmap (Time vs Cart Position) stabilization_success ---
   - type: heatmap
     enabled: false
-    name: "heatmap_time_vs_cart_position(goal_reached)"
+    name: "heatmap_time_vs_cart_position(stabilization_success)"
     source: detailed # Use data from the list of all episode details
-    x_variable: time
-    y_variable: cart_position
-    value_variable: time # Variable con la que se calcula el aggregation
-    output_filename: fig10_heatmap_time_vs_cart_position(goal_reached).png
+    x_variable: t_sec
+    y_variable: cart_position_raw
+    value_variable: t_sec # Variable con la que se calcula el aggregation
+    output_filename: fig10_heatmap_time_vs_cart_position(stabilization_success).png
     config:
       aggregation: count # mean, max, min, etc...
-      title: Heatmap - Time vs Cart Position (goal_reached)
+      title: Heatmap - Time vs Cart Position (stabilization_success)
       title_fontsize: 18
       figsize_w: 14
       figsize_h: 10
@@ -385,19 +385,19 @@ plots:
       bins: 500 # Number of bins for histogram2d
       log_scale: false # Use logarithmic color scale?
       grid_on: false
-      filter_termination_reason: ['goal_reached']
-  # --- Example Heatmap (Time vs Cart Velocity) goal_reached ---
+      filter_termination_reason: ['stabilization_success']
+  # --- Example Heatmap (Time vs Cart Velocity) stabilization_success ---
   - type: heatmap
     enabled: false
-    name: "heatmap_time_vs_cart_velocity(goal_reached)"
+    name: "heatmap_time_vs_cart_velocity(stabilization_success)"
     source: detailed # Use data from the list of all episode details
-    x_variable: time
-    y_variable: cart_velocity
-    value_variable: time # Variable con la que se calcula el aggregation
-    output_filename: fig10_heatmap_time_vs_cart_velocity(goal_reached).png
+    x_variable: t_sec
+    y_variable: cart_velocity_raw
+    value_variable: t_sec # Variable con la que se calcula el aggregation
+    output_filename: fig10_heatmap_time_vs_cart_velocity(stabilization_success).png
     config:
       aggregation: count # mean, max, min, etc...
-      title: Heatmap - Time vs Cart Velocity (goal_reached)
+      title: Heatmap - Time vs Cart Velocity (stabilization_success)
       title_fontsize: 18
       figsize_w: 14
       figsize_h: 10
@@ -421,15 +421,15 @@ plots:
       bins: 500 # Number of bins for histogram2d
       log_scale: false # Use logarithmic color scale?
       grid_on: false
-      filter_termination_reason: ['goal_reached']
+      filter_termination_reason: ['stabilization_success']
   # --- Example Heatmap (Time vs Cart Velocity) ---
   - type: heatmap
     enabled: false
     name: "heatmap_time_vs_cart_velocity"
     source: detailed # Use data from the list of all episode details
-    x_variable: time
-    y_variable: cart_velocity
-    value_variable: time # Variable con la que se calcula el aggregation
+    x_variable: t_sec
+    y_variable: cart_velocity_raw
+    value_variable: t_sec # Variable con la que se calcula el aggregation
     output_filename: fig11_heatmap_time_vs_cart_velocity.png
     config:
       aggregation: count # mean, max, min, etc...
@@ -460,12 +460,12 @@ plots:
       filter_termination_reason: null
   # --- Example Heatmap (Time vs normalize_control_action) ---
   - type: heatmap
-    enabled: true
+    enabled: false
     name: "heatmap_time_vs_pendulum_control_action"
     source: detailed # Use data from the list of all episode details
-    x_variable: time
+    x_variable: t_sec
     y_variable: control_action_pendulum_angle
-    value_variable: time # Variable con la que se calcula el aggregation
+    value_variable: t_sec # Variable con la que se calcula el aggregation
     output_filename: fig12a_heatmap_time_vs_pendulum_control_action.png
     config:
       aggregation: count # mean, max, min, etc...
@@ -494,18 +494,18 @@ plots:
       log_scale: false # Use logarithmic color scale?
       grid_on: false
       filter_termination_reason: null
-  # --- Example Heatmap (Time vs normalize_control_action) goal_reached ---
+  # --- Example Heatmap (Time vs normalize_control_action) stabilization_success ---
   - type: heatmap
     enabled: false
-    name: "heatmap_time_vs_pendulum_control_action(goal_reached)"
+    name: "heatmap_time_vs_pendulum_control_action(stabilization_success)"
     source: detailed # Use data from the list of all episode details
-    x_variable: time
+    x_variable: t_sec
     y_variable: effective_action_pendulum_angle
-    value_variable: time # Variable con la que se calcula el aggregation
-    output_filename: fig12_heatmap_time_vs_pendulum_control_action(goal_reached).png
+    value_variable: t_sec # Variable con la que se calcula el aggregation
+    output_filename: fig12_heatmap_time_vs_pendulum_control_action(stabilization_success).png
     config:
       aggregation: count # mean, max, min, etc...
-      title: Heatmap - Time vs Pendulum control action (goal_reached)
+      title: Heatmap - Time vs Pendulum control action (stabilization_success)
       title_fontsize: 30
       figsize_w: 16
       figsize_h: 12
@@ -529,25 +529,25 @@ plots:
       bins: 500 # Number of bins for histogram2d
       log_scale: false # Use logarithmic color scale?
       grid_on: false
-      filter_termination_reason: ['goal_reached']
-  # --- Example Heatmap (Time vs cart_force) ---
+      filter_termination_reason: ['stabilization_success']
+  # --- Example Heatmap (Time vs u_total_saturated) ---
   - type: heatmap
-    enabled: false
-    name: "heatmap_time_vs_cart_control_action"
+    enabled: true
+    name: "heatmap_time_vs_u_total_saturated"
     source: detailed # Use data from the list of all episode details
-    x_variable: time
-    y_variable: effective_action_cart_position
-    value_variable: time # Variable con la que se calcula el aggregation
-    output_filename: fig12b_heatmap_time_vs_cart_control_action.png
+    x_variable: t_sec
+    y_variable: u_total_saturated
+    value_variable: t_sec # Variable con la que se calcula el aggregation
+    output_filename: fig12b_heatmap_time_vs_u_total_saturated.png
     config:
       aggregation: count # mean, max, min, etc...
-      title: Heatmap - Time vs Cart control action
+      title: Heatmap - Time vs Cart control action saturated
       title_fontsize: 30
       figsize_w: 16
       figsize_h: 12
       xlabel: Time [s]
       xlabel_fontsize: 28
-      ylabel: Cart control action (N)
+      ylabel: Cart control action saturated (-)
       ylabel_fontsize: 28
       xmin: 0
       xmax: 5
@@ -566,24 +566,24 @@ plots:
       log_scale: false # Use logarithmic color scale?
       grid_on: false
       filter_termination_reason: null
-  # --- Example Heatmap (Time vs cart_force) goal_reached ---
+  # --- Example Heatmap (Time vs u_total_saturated) stabilization_success ---
   - type: heatmap
-    enabled: false
-    name: "heatmap_time_vs_cart_control_action(goal_reached)"
+    enabled: true
+    name: "heatmap_time_vs_u_total_saturated(stabilization_success)"
     source: detailed # Use data from the list of all episode details
-    x_variable: time
-    y_variable: effective_action_cart_position
-    value_variable: time # Variable con la que se calcula el aggregation
-    output_filename: fig12_heatmap_time_vs_cart_control_action(goal_reached).png
+    x_variable: t_sec
+    y_variable: u_total_saturated
+    value_variable: t_sec # Variable con la que se calcula el aggregation
+    output_filename: fig12a_heatmap_time_vs_u_total_saturated(stabilization_success).png
     config:
       aggregation: count # mean, max, min, etc...
-      title: Heatmap - Time vs Cart control action (goal_reached)
+      title: Heatmap - Time vs Cart control action saturated (stabilization_success)
       title_fontsize: 30
       figsize_w: 16
       figsize_h: 12
       xlabel: Time [s]
       xlabel_fontsize: 28
-      ylabel: Cart control action (N)
+      ylabel: Cart control action saturated (-)
       ylabel_fontsize: 28
       xmin: 0
       xmax: 5
@@ -601,15 +601,15 @@ plots:
       bins: 500 # Number of bins for histogram2d
       log_scale: false # Use logarithmic color scale?
       grid_on: false
-      filter_termination_reason: ['goal_reached']
+      filter_termination_reason: ['stabilization_success']
   # --- Example Heatmap (Time vs cart_force) ---
   - type: heatmap
     enabled: true
     name: "heatmap_time_vs_cart_force"
     source: detailed # Use data from the list of all episode details
-    x_variable: time
+    x_variable: t_sec
     y_variable: cart_force
-    value_variable: time # Variable con la que se calcula el aggregation
+    value_variable: t_sec # Variable con la que se calcula el aggregation
     output_filename: fig12c_heatmap_time_vs_cart_force.png
     config:
       aggregation: count # mean, max, min, etc...

@@ -1,0 +1,24 @@
+data_summary:
+  data_first_cols: [
+    'episode_id', 
+    'epsilon', 
+    'learning_rate', 
+    'gain_delta', 
+    'total_agent_decisions', 
+    'final_t_sec',  
+    'total_reward', 
+    'performance',
+    'termination_reason',
+    'final_kp_pendulum_angle', 
+    'final_ki_pendulum_angle', 
+    'final_kd_pendulum_angle',
+    'final_kp_cart_position',
+    'final_ki_cart_position',
+    'final_kd_cart_position'
+  ]
+  data_stats: [
+    'cart_position_norm',
+    'cart_velocity_norm',
+    'pendulum_angle_norm',
+    'pendulum_velocity_norm'
+  ]

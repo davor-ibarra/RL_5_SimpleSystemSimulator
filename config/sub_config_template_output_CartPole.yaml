@@ -86,11 +86,11 @@ episode_data:
     L_edot_cart_position: []
     L_delta_u_pendulum_angle: []
     L_delta_u_cart_position: []
-    L_delta_e_pendulum_angle: []
-    L_delta_e_cart_position: []
+    #L_delta_e_pendulum_angle: []
+    #L_delta_e_cart_position: []
 
     # global vars (optional)
-    L_u_total: []
+    #L_u_total: []
 
     # metrics params (optional)
     # metrics_param_<controller_name>_<key>: []
@@ -140,20 +140,20 @@ episode_data:
     #r_L_delta_u_kd_cart_position: []
 
     # extra reward (per-var_obj)
-    extra_penalty_instantaneous_pendulum_angle: []
-    extra_penalty_instantaneous_cart_position: []
-    extra_penalty_pendulum_angle: []
-    extra_penalty_cart_position: []
-    extra_bonus_goal_pendulum_angle: []
-    extra_bonus_goal_cart_position: []
-    extra_bonus_band_pendulum_angle: []
+    #extra_penalty_instantaneous_pendulum_angle: []
+    #extra_penalty_instantaneous_cart_position: []
+    #xtra_penalty_pendulum_angle: []
+    #extra_penalty_cart_position: []
+    #extra_bonus_goal_pendulum_angle: []
+    #extra_bonus_goal_cart_position: []
+    #extra_bonus_band_pendulum_angle: []
     extra_bonus_band_cart_position: []
-    extra_conditional_dynamic_penalty_pendulum_angle: []
-    extra_conditional_dynamic_penalty_cart_position: []
-    extra_conditional_dynamic_incentive_pendulum_angle: []
-    extra_conditional_dynamic_incentive_cart_position: []
-    extra_total_pendulum_angle: []
-    extra_total_cart_position: []
+    #extra_conditional_dynamic_penalty_pendulum_angle: []
+    #extra_conditional_dynamic_penalty_cart_position: []
+    #extra_conditional_dynamic_incentive_pendulum_angle: []
+    #extra_conditional_dynamic_incentive_cart_position: []
+    #extra_total_pendulum_angle: []
+    #extra_total_cart_position: []
 
     # learn (optional)
     # td_error_<agent_name>: []
@@ -177,4 +177,3 @@ episode_data:
 
     # episode metadata
     total_agent_decisions: 0
-    episode_wall_time_sec: 0.0

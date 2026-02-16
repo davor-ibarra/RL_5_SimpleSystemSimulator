@@ -22,7 +22,7 @@ class SimulationManager:
     
     def __init__(self, dynamic_system_base, controller_base, agent_base, 
                  metric_processing, reward_calculator, metric_collector, result_handler,
-                 config_main, config_data_save, output_dir):
+                 config_main, config_data_summary, output_dir):
         """
         Inicializa el orquestador y deja todo preparado para ejecutar la simulación
         sin lógica condicional ni descubrimientos tardíos.
@@ -36,7 +36,7 @@ class SimulationManager:
             metric_collector: Instancia del colector de métricas
             result_handler: Instancia del manejador de resultados
             config_main (dict): Configuración principal
-            config_data_save (dict): Configuración de guardado de datos
+            config_data_summary (dict): Configuración de resumen de datos
             output_dir (str): Directorio de salida
         """
         # Almacenar componentes
@@ -53,7 +53,7 @@ class SimulationManager:
         
         # Guardar contexto de ejecución
         self.config_main = config_main
-        self.config_data_save = config_data_save
+        self.config_data_summary = config_data_summary
         self.output_dir = output_dir
         
         # Extraer parámetros de simulación
@@ -171,8 +171,7 @@ class SimulationManager:
             'accumulated_band_bonus': episode_reward_summary['accumulated_band_bonus'],
             'goal_bonus': episode_reward_summary['goal_bonus'],
             'total_reward': total_reward,
-            'total_agent_decisions': total_agent_decisions,
-            'episode_wall_time_sec': current_time_sec
+            'total_agent_decisions': total_agent_decisions
         }
         self.metric_collector.on_episode_end(episode_id, end_episode_data)
         

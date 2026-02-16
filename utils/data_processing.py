@@ -12,58 +12,107 @@ Contiene funciones de utilidad para:
 import numpy as np
 
 
-def calculate_episode_summary(episode_data):
+def calculate_episode_summary(episode_data, config_data_summary=None):
     """
-    Calcula el resumen de un episodio completo.
-    Produce las columnas esperadas por summary_first_cols + estadísticas de interval_data.
+    Calcula el resumen de un episodio completo de forma estrictamente declarativa según config.
+    Produce las columnas definidas en data_first_cols + estadísticas de data_stats.
+    NO usa valores por defecto ni .get() para evitar datos espurios o silenciosos.
     
     Args:
-        episode_data (dict): Datos del episodio en formato canónico con:
-            - episode_id: int
-            - step_data: dict de listas
-            - interval_data: dict de listas
-            - end_episode_data: dict
+        episode_data (dict): Datos del episodio en formato canónico
+        config_data_summary (dict): Configuración de resumen (obligatorio)
         
     Returns:
-        dict: Resumen del episodio con estadísticas agregadas
+        dict: Resumen del episodio
     """
-    episode_id = episode_data['episode_id']
-    end_data = episode_data['end_episode_data']
-    interval_data = episode_data['interval_data']
+    if not config_data_summary:
+         return {}
+
+    summary = {}
+    config_root = config_data_summary['data_summary']
+    first_cols = config_root['data_first_cols']
+    stats_cols = config_root['data_stats']
     
-    # Campos base desde end_episode_data
-    summary = {
-        'episode': episode_id,
-        'episode_wall_time_sec': end_data['episode_wall_time_sec'],
-        'total_agent_decisions': end_data['total_agent_decisions'],
-        'termination_reason': end_data['end_termination_reason'],
-        'total_reward': end_data['total_reward'],
-        'accumulated_band_bonus': end_data['accumulated_band_bonus'],
-        'goal_bonus': end_data['goal_bonus'],
-    }
+    # 1. Unificar fuentes de datos disponibles en un solo lookup plano
+    # Prioridad de lectura (conceptualmente, aunque aquí es unificación plana):
+    # step_data -> interval_data -> end_episode_data
+    # Se usa update secuencial.
+    data_sources = {}
     
-    # Estadísticas de rewards desde interval_data columnar
-    global_rewards = interval_data['global_interval_reward']
-    if global_rewards:
-        summary['avg_reward'] = float(np.mean(global_rewards))
-        summary['std_reward'] = float(np.std(global_rewards))
+    if 'step_data' in episode_data:
+        data_sources.update(episode_data['step_data'])
+        
+    if 'interval_data' in episode_data:
+        data_sources.update(episode_data['interval_data'])
     
-    # Estadísticas de métricas numéricas del interval_data
-    # Iterar llaves numéricas (excluir metadata y strings)
-    skip_keys = {'n_interval', 'interval_id', 'interval_start_step_idx',
-                 'interval_end_step_idx', 'termination_reason'}
+    if 'end_episode_data' in episode_data:
+        data_sources.update(episode_data['end_episode_data'])
     
-    for key, values in interval_data.items():
-        if key in skip_keys:
+    # Agregar episode_id manualmente si no está en end_episode_data
+    if 'episode_id' not in data_sources:
+        data_sources['episode_id'] = episode_data['episode_id']
+    
+    # 2. Construir columnas principales (data_first_cols)
+    for col in first_cols:
+        
+        # Caso Especial: Performance (Cálculo derivado)
+        if col == 'performance':
+            # Requiere total_reward y t_sec (final)
+            # Solo calcular si ambos existen
+            if 'total_reward' in data_sources and 't_sec' in data_sources:
+                 total_reward = data_sources['total_reward']
+                 t_sec_list = data_sources['t_sec']
+                 
+                 # Validar que t_sec_list sea una lista no vacía y el último valor > 0
+                 if isinstance(t_sec_list, list) and len(t_sec_list) > 0:
+                     duration = t_sec_list[-1]
+                     if duration > 0:
+                         summary['performance'] = total_reward / duration
+                     else:
+                         summary['performance'] = 0.0
+                 else:
+                     summary['performance'] = 0.0
+            else:
+                 summary['performance'] = 0.0
             continue
-        if not isinstance(values, list) or not values:
+
+        # Caso Especial: Columnas 'final_*' (Extraction de último valor)
+        if col.startswith('final_'):
+            # Determinar llave original
+            if col == 'final_t_sec':
+                original_key = 't_sec'
+            else:
+                original_key = col[6:] 
+            
+            if original_key in data_sources:
+                values = data_sources[original_key]
+                if isinstance(values, list) and values:
+                    summary[col] = values[-1]
+                else:
+                    # Si no es lista, quizas es escalar ya calculado y presente
+                    summary[col] = values
+            # Si no está en datasources, no se agrega
             continue
-        # Solo procesar series numéricas
-        if isinstance(values[0], (int, float)):
-            stats = compute_statistics(values)
-            for stat_name, stat_val in stats.items():
-                summary[f'{key}_{stat_name}'] = stat_val
-    
+            
+        # Caso General: Mapeo directo
+        if col in data_sources:
+            values = data_sources[col]
+            if isinstance(values, list):
+                 if values:
+                     summary[col] = values[-1]
+            else:
+                 summary[col] = values
+
+    # 3. Calcular estadísticas (data_stats)
+    for key in stats_cols:
+        if key in data_sources:
+            values = data_sources[key]
+            # Solo calcular si es lista de números y no está vacía
+            if isinstance(values, list) and values and isinstance(values[0], (int, float)):
+                stats = compute_statistics(values)
+                for stat_name, stat_val in stats.items():
+                     summary[f'{key}_{stat_name}'] = stat_val
+
     return summary
 
 
@@ -110,22 +159,23 @@ def compute_statistics(values):
             'mean': 0.0,
             'std': 0.0,
             'min': 0.0,
-            'max': 0.0,
             'p25': 0.0,
             'p50': 0.0,
-            'p75': 0.0
+            'p75': 0.0,
+            'max': 0.0
         }
     
-    arr = np.array(values)
+    # Asegurar tipo numérico (float) para evitar errores con booleanos en np.percentile
+    arr = np.array(values, dtype=float)
     
     return {
         'mean': float(np.mean(arr)),
         'std': float(np.std(arr)),
         'min': float(np.min(arr)),
-        'max': float(np.max(arr)),
         'p25': float(np.percentile(arr, 25)),
         'p50': float(np.percentile(arr, 50)),
-        'p75': float(np.percentile(arr, 75))
+        'p75': float(np.percentile(arr, 75)),
+        'max': float(np.max(arr))
     }
 
 

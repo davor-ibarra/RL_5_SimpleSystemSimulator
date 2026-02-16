@@ -40,16 +40,16 @@ class ResultHandler:
     - Guardar estado del agente
     """
     
-    def __init__(self, output_dir, config_data_save=None):
+    def __init__(self, output_dir, config_data_summary=None):
         """
         Inicializa el manejador de resultados.
         
         Args:
             output_dir (str): Directorio de salida para la corrida
-            config_data_save (dict): Configuración de guardado de datos (opcional)
+            config_data_summary (dict): Configuración de resumen de datos (opcional)
         """
         self.output_dir = output_dir
-        self.config_data_save = config_data_save if config_data_save else {}
+        self.config_data_save = config_data_summary if config_data_summary else {}
         
         # Configuración de chunking
         self.episodes_per_chunk = 100
@@ -96,7 +96,7 @@ class ResultHandler:
         self.episode_buffer.append(episode_data)
         
         # Generar y acumular summary row
-        summary_row = calculate_episode_summary(episode_data)
+        summary_row = calculate_episode_summary(episode_data, self.config_data_save)
         self.append_summary_row(summary_row)
         
         # Si el buffer alcanza el tamaño de chunk, escribir
@@ -153,8 +153,9 @@ class ResultHandler:
         df = pd.DataFrame(self.summary_rows)
         
         # Ordenar columnas según configuración si existe
-        config = self.config_data_save['data_save']['config']
-        first_cols = config['summary_first_cols']
+        # Nota: La llave raíz en el nuevo yaml es 'data_summary', no 'data_save'
+        config_root = self.config_data_save['data_summary']
+        first_cols = config_root['data_first_cols']
         
         if first_cols:
             # Reordenar columnas: primero las especificadas, luego el resto

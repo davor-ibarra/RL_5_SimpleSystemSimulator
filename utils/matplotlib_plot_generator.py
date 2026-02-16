@@ -11,12 +11,10 @@ import numpy as np
 import seaborn as sns
 import gc
 
-from interfaces.plot_generator import PlotGenerator
-
 # 1.1: Logger a nivel de módulo
 logger = logging.getLogger(__name__)
 
-class MatplotlibPlotGenerator(PlotGenerator):
+class MatplotlibPlotGenerator:
     """
     Generates plots using Matplotlib.
     Loads pre-calculated heatmap data from an Excel file.
@@ -186,8 +184,8 @@ class MatplotlibPlotGenerator(PlotGenerator):
     # --- Métodos Privados para Cargar Datos ---
 
     def _load_summary_data(self, output_root_path_plot: str) -> Optional[pd.DataFrame]:
-        """Carga los datos de resumen desde episodes_summary.xlsx."""
-        summary_path = os.path.join(output_root_path_plot, 'episodes_summary_data.xlsx')
+        """Carga los datos de resumen desde summary.xlsx."""
+        summary_path = os.path.join(output_root_path_plot, 'summary.xlsx')
         if not os.path.exists(summary_path):
             logger.error(f"Archivo de resumen no encontrado: {summary_path}")
             return None
@@ -201,20 +199,22 @@ class MatplotlibPlotGenerator(PlotGenerator):
     
     def _load_detailed_data(self, output_root_path_plot: str) -> Optional[pd.DataFrame]:
         """
-        Carga y combina datos detallados de archivos simulation_data_ep_*.json.
-        (Mantenemos la lógica anterior aquí, aunque HeatmapGenerator tiene una versión similar).
+        Carga y combina datos detallados de archivos episodes_chunks_*.json.
+        Adapta la estructura anidada de step_data a un DataFrame plano.
         """
         all_aligned_data: List[pd.DataFrame] = []
-        logger.info(f"Buscando archivos simulation_data_ep_*.json en: {output_root_path_plot} para datos detallados...")
+        logger.info(f"Buscando archivos episodes_chunks_*.json en: {output_root_path_plot} para datos detallados...")
         try:
-            files = [f for f in os.listdir(output_root_path_plot) if f.startswith("simulation_data_ep_") and f.endswith(".json")]
+            # Buscar archivos chunks (no simulation_data_ep_*)
+            files = [f for f in os.listdir(output_root_path_plot) if f.startswith("episodes_chunks_") and f.endswith(".json")]
             if not files:
-                logger.warning("No se encontraron archivos de datos detallados para plots que los requieran.")
+                logger.warning("No se encontraron archivos de datos detallados (chunks).")
                 return None
+            
             try:
-                files.sort(key=lambda name: int(name.split('_ep_')[-1].split('_to_')[0]))
+                files.sort() # Ordenar alfabéticamente funciona bien para formato 0000d
             except (ValueError, IndexError):
-                logger.warning("No se pudo ordenar los archivos de datos detallados por número de episodio.")
+                logger.warning("No se pudo ordenar los archivos de datos detallados.")
 
             raw_episode_list = []
             for filename in files:
@@ -230,23 +230,37 @@ class MatplotlibPlotGenerator(PlotGenerator):
             if not raw_episode_list: return None
 
             for i, episode_dict in enumerate(raw_episode_list):
-                time_values = episode_dict.get('time')
-                episode_id_val = episode_dict.get('episode', [f'ep_idx_{i}'])[0] # Default ID
+                # Extraer step_data
+                step_data = episode_dict.get('step_data')
+                if not step_data:
+                    continue
+                
+                # Extraer tiempo (t_sec)
+                time_values = step_data.get('t_sec')
+                episode_id_val = episode_dict.get('episode_id', i)
+                
                 if not isinstance(time_values, list) or not time_values: continue
+                
                 num_steps = len(time_values)
                 ref_index = pd.RangeIndex(num_steps)
                 temp_data = {'time': pd.Series(time_values, index=ref_index)}
-                for metric, values in episode_dict.items():
-                    if metric == 'time': continue
+                
+                # Aplanar otras métricas de step_data
+                for metric, values in step_data.items():
+                    if metric == 't_sec': continue # Ya procesado como time
+                    if metric == 'n_step': continue
+                    
                     if isinstance(values, list):
                         s = pd.Series(index=ref_index, dtype=object)
-                        valid_len = min(len(values), num_steps); s.iloc[:valid_len] = values[:valid_len]
+                        valid_len = min(len(values), num_steps)
+                        s.iloc[:valid_len] = values[:valid_len]
                         temp_data[metric] = s
                     elif values is not None:
                         temp_data[metric] = pd.Series([values] * num_steps, index=ref_index)
 
                 try:
-                    episode_df = pd.DataFrame(temp_data); episode_df['episode'] = episode_id_val
+                    episode_df = pd.DataFrame(temp_data)
+                    episode_df['episode'] = episode_id_val
                     all_aligned_data.append(episode_df)
                 except Exception as e_df: logger.error(f"Error en DataFrame ep {episode_id_val}: {e_df}")
 

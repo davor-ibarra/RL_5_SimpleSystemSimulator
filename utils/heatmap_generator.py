@@ -42,13 +42,7 @@ class HeatmapGenerator:
     def prepare_heatmap_data(self, metric_name, aggregation_type='mean'):
         """
         Prepara datos para generar un heatmap de una métrica específica.
-        
-        Args:
-            metric_name (str): Nombre de la métrica
-            aggregation_type (str): Tipo de agregación ('mean', 'max', 'min', 'count')
-            
-        Returns:
-            dict: Datos estructurados para heatmap
+        Adapta la estructura columnar 'interval_data'.
         """
         if self.episodes_data is None:
             self.load_all_episodes()
@@ -56,17 +50,18 @@ class HeatmapGenerator:
         # Extraer valores de la métrica
         values = []
         for episode in self.episodes_data:
-            for interval_record in episode['intervals']:
-                interval_data = interval_record['interval_data']
-                if metric_name in interval_data:
-                    values.append(interval_data[metric_name])
+            interval_data = episode.get('interval_data', {})
+            if metric_name in interval_data:
+                metric_values = interval_data[metric_name]
+                if isinstance(metric_values, list):
+                    values.extend(metric_values)
         
         return {
             'metric_name': metric_name,
             'aggregation_type': aggregation_type,
             'values': values
         }
-    
+
     def load_all_episodes(self):
         """
         Carga todos los episodios desde archivos JSON persistidos.
@@ -74,16 +69,18 @@ class HeatmapGenerator:
         Returns:
             list: Lista de datos de episodios
         """
-        chunks_dir = os.path.join(self.output_dir, 'chunks')
+        # No usar subcarpeta chunks, los archivos están en la raíz según ResultHandler
+        chunks_dir = self.output_dir
         self.episodes_data = []
         
         if not os.path.exists(chunks_dir):
             return self.episodes_data
         
         # Listar archivos de chunks ordenados
+        # Patrón correcto: episodes_chunks_*.json (plural)
         chunk_files = sorted([
             f for f in os.listdir(chunks_dir) 
-            if f.startswith('episode_chunk_') and f.endswith('.json')
+            if f.startswith('episodes_chunks_') and f.endswith('.json')
         ])
         
         for chunk_file in chunk_files:
@@ -115,7 +112,7 @@ class HeatmapGenerator:
     
     def flatten_to_step_records(self, episodes=None, filter_termination_reason=None):
         """
-        Aplana episodios a registros por step para visualización.
+        Aplana episodios a registros por step para visualización, usando step_data columnar.
         
         Args:
             episodes (list): Lista de episodios (None = cargar todos)
@@ -131,51 +128,71 @@ class HeatmapGenerator:
         
         # Filtrar por termination_reason si se especifica
         if filter_termination_reason:
-            episodes = [ep for ep in episodes 
-                       if ep['termination_reason'] in filter_termination_reason]
+            filtered_episodes = []
+            for ep in episodes:
+                reason = None
+                # Prioridad: top-level -> end_episode_data
+                if 'termination_reason' in ep:
+                    reason = ep['termination_reason']
+                elif 'end_episode_data' in ep and 'end_termination_reason' in ep['end_episode_data']:
+                    reason = ep['end_episode_data']['end_termination_reason']
+                
+                if reason in filter_termination_reason:
+                    filtered_episodes.append(ep)
+            episodes = filtered_episodes
         
         step_records = []
         
         for episode in episodes:
             episode_id = episode['episode_id']
-            termination_reason = episode['termination_reason']
             
-            for interval_idx, interval_record in enumerate(episode['intervals']):
-                interval_data = interval_record['interval_data']
+            # Obtener termination reason
+            termination_reason = None
+            if 'termination_reason' in episode:
+                termination_reason = episode['termination_reason']
+            elif 'end_episode_data' in episode and 'end_termination_reason' in episode['end_episode_data']:
+                termination_reason = episode['end_episode_data']['end_termination_reason']
+            
+            # Procesar step_data (formato columnar)
+            if 'step_data' not in episode:
+                continue
                 
-                # Series step-level
-                dynamic_series = interval_data.get('dynamic_system_state_dict', [])
-                controller_series = interval_data.get('controller_state_dict', [])
+            step_data = episode['step_data']
+            
+            # Determinar longitud de series
+            n_steps = 0
+            keys_to_process = []
+            
+            if 'n_step' in step_data:
+                 n_steps = step_data['n_step']
+            
+            for key, val in step_data.items():
+                if isinstance(val, list):
+                    if n_steps == 0 and len(val) > 0:
+                        n_steps = len(val)
+                    keys_to_process.append(key)
+            
+            if n_steps == 0:
+                continue
                 
-                n_steps = len(dynamic_series)
+            # Iterar y construir registros
+            for i in range(n_steps):
+                record = {
+                    'episode_id': episode_id,
+                    'step_id': i,
+                    'termination_reason': termination_reason
+                }
                 
-                for step_idx in range(n_steps):
-                    record = {
-                        'episode_id': episode_id,
-                        'interval_id': interval_idx,
-                        'step_id': step_idx,
-                        'termination_reason': termination_reason
-                    }
-                    
-                    # Añadir estado dinámico
-                    if step_idx < len(dynamic_series):
-                        for key, value in dynamic_series[step_idx].items():
-                            record[key] = value
-                    
-                    # Añadir estado de controlador (aplanar anidado)
-                    if step_idx < len(controller_series):
-                        controller_state = controller_series[step_idx]
-                        for section_name, section_data in controller_state.items():
-                            if isinstance(section_data, dict):
-                                for key, value in section_data.items():
-                                    record[key] = value
-                            else:
-                                record[section_name] = section_data
-                    
-                    step_records.append(record)
+                for key in keys_to_process:
+                    val_list = step_data[key]
+                    if i < len(val_list):
+                        val = val_list[i]
+                        record[key] = val
+                
+                step_records.append(record)
         
         return step_records
-    
+
     def align_data_by_state_action(self, episodes_data):
         """
         Alinea datos por estados y acciones para crear estructura tabular.
@@ -201,7 +218,7 @@ class HeatmapGenerator:
             array: Matriz agregada para heatmap
         """
         # Extraer valores de la métrica
-        values = [record.get(metric_name, 0) for record in aligned_data]
+        values = [record[metric_name] for record in aligned_data if metric_name in record]
         
         if aggregation_type == 'mean':
             return np.mean(values) if values else 0.0
@@ -234,8 +251,8 @@ class HeatmapGenerator:
             filter_termination_reason=filter_termination_reason
         )
         
-        x_values = [r.get(x_variable) for r in step_records if x_variable in r]
-        y_values = [r.get(y_variable) for r in step_records if y_variable in r]
+        x_values = [r[x_variable] for r in step_records if x_variable in r]
+        y_values = [r[y_variable] for r in step_records if y_variable in r]
         
         if not x_values or not y_values:
             return None, None, None
@@ -278,6 +295,7 @@ class HeatmapGenerator:
         try:
             with pd.ExcelWriter(output_excel_target_filepath, engine='openpyxl') as writer:
                 for heatmap_cfg in heatmap_configs_list:
+                    # Configs de visualización pueden usar get() porque son opcionales/configuración
                     plot_name = heatmap_cfg.get('name')
                     plot_index = heatmap_cfg.get('_internal_plot_index', '?')
                     
@@ -298,12 +316,15 @@ class HeatmapGenerator:
                     # Filtrar registros
                     filtered_records = step_records
                     if filter_reason:
-                        filtered_records = [r for r in step_records 
-                                           if r.get('termination_reason') in filter_reason]
+                        filtered_records = [
+                            r for r in step_records 
+                            if 'termination_reason' in r and r['termination_reason'] in filter_reason
+                        ]
                     
-                    # Extraer valores
-                    x_values = [r.get(x_var) for r in filtered_records if x_var in r and r.get(x_var) is not None]
-                    y_values = [r.get(y_var) for r in filtered_records if y_var in r and r.get(y_var) is not None]
+                    # Extraer valores usando acceso directo seguro (verificando existencia)
+                    x_values = [r[x_var] for r in filtered_records if x_var in r and r[x_var] is not None]
+                    y_values = [r[y_var] for r in filtered_records if y_var in r and r[y_var] is not None]
+                    
                     
                     if not x_values or not y_values:
                         logger.warning(f"[HeatmapGenerator] No hay datos para heatmap '{sheet_name}'")
@@ -334,75 +355,17 @@ class HeatmapGenerator:
             
         except Exception as e:
             logger.error(f"[HeatmapGenerator] Error generando archivo Excel: {e}", exc_info=True)
-    
+
     def _load_detailed_step_records(self, output_root_path):
         """
-        Carga datos detallados desde archivos JSON.
+        Carga datos detallados usando la lógica centralizada.
         
         Args:
-            output_root_path (str): Directorio de resultados
+            output_root_path (str): Directorio de resultados (no se usa si self.output_dir ya está set)
             
         Returns:
             list: Lista de registros por step
         """
-        import logging
-        logger = logging.getLogger(__name__)
-        
-        all_records = []
-        
-        # Buscar archivos simulation_data_ep_*.json
-        try:
-            files = [f for f in os.listdir(output_root_path) 
-                    if f.startswith("simulation_data_ep_") and f.endswith(".json")]
-            
-            if not files:
-                # Intentar con chunks si no hay archivos de simulación directos
-                return self.flatten_to_step_records()
-            
-            # Ordenar por número de episodio
-            try:
-                files.sort(key=lambda name: int(name.split('_ep_')[-1].split('_to_')[0]))
-            except (ValueError, IndexError):
-                pass
-            
-            for filename in files:
-                filepath = os.path.join(output_root_path, filename)
-                try:
-                    import json
-                    with open(filepath, 'r', encoding='utf-8') as f:
-                        episodes_in_file = json.load(f)
-                    
-                    if isinstance(episodes_in_file, list):
-                        for episode_dict in episodes_in_file:
-                            if not isinstance(episode_dict, dict):
-                                continue
-                            
-                            time_values = episode_dict.get('time', [])
-                            episode_id = episode_dict.get('episode', [0])[0] if isinstance(episode_dict.get('episode'), list) else episode_dict.get('episode', 0)
-                            term_reason = episode_dict.get('termination_reason', ['unknown'])[0] if isinstance(episode_dict.get('termination_reason'), list) else episode_dict.get('termination_reason', 'unknown')
-                            
-                            num_steps = len(time_values)
-                            
-                            for step_idx in range(num_steps):
-                                record = {
-                                    'episode_id': episode_id,
-                                    'step_id': step_idx,
-                                    'termination_reason': term_reason
-                                }
-                                
-                                # Añadir cada métrica
-                                for key, values in episode_dict.items():
-                                    if isinstance(values, list) and len(values) > step_idx:
-                                        record[key] = values[step_idx]
-                                
-                                all_records.append(record)
-                                
-                except Exception as e:
-                    logger.error(f"[HeatmapGenerator] Error cargando {filename}: {e}")
-            
-            logger.info(f"[HeatmapGenerator] Cargados {len(all_records)} registros detallados")
-            return all_records
-            
-        except Exception as e:
-            logger.error(f"[HeatmapGenerator] Error buscando archivos: {e}")
-            return []
+        # Reutilizar la lógica ya corregida en flatten_to_step_records
+        # que a su vez llama a load_all_episodes (que ya busca en chunks)
+        return self.flatten_to_step_records()
