@@ -65,6 +65,11 @@ class SimulationManager:
         # Derivar constantes operativas
         self.steps_per_interval = int(self.decision_interval_sec / self.dt_sec)
         
+        # Logging params
+        self.current_time_sec = 0.0
+        self.termination_reason = ""
+        self.total_reward = 0.0
+        
         # Obtener nombres desde componentes instanciados
         self.controller_names = list(self.controllers.keys())
         self.agent_names = agent_base.agent_names
@@ -86,6 +91,7 @@ class SimulationManager:
         for episode_id in range(self.n_episodes):
             print(f"\n[SIMULATION_MANAGER] === Episodio {episode_id + 1}/{self.n_episodes} ===")
             self._run_episode(episode_id)
+            print(f"\n[SIMULATION_MANAGER] --- T_max = {self.current_time_sec}  |  Total Reward = {self.total_reward}  |  Termination Reason = {self.termination_reason} ---")
         
         self.metric_collector.finalize_run()
         print(f"\n[SIMULATION_MANAGER] Simulación completada")
@@ -101,7 +107,7 @@ class SimulationManager:
         self._reset_episode(episode_id)
         
         # 2. Inicializar reloj y control de término
-        current_time_sec = 0.0
+        self.current_time_sec = 0.0
         decision_id = 0
         
         # 3. Inicializar estado previo necesario para decisiones
@@ -118,12 +124,12 @@ class SimulationManager:
         
         # 6. Loop de intervalos hasta término por tiempo o condición del sistema
         terminated = False
-        termination_reason = ""
-        total_reward = 0.0
+        self.termination_reason = ""
+        self.total_reward = 0.0
         total_agent_decisions = 0
         step_idx_global = 0
         
-        while current_time_sec < self.episode_duration_sec and not terminated:
+        while self.current_time_sec < self.episode_duration_sec and not terminated:
             # 6.1. Decide acciones del intervalo
             actions_dict = self.agent_base.select_action(self.prev_agent_state)
             
@@ -132,7 +138,7 @@ class SimulationManager:
             
             # 6.3. Ejecuta la simulación del intervalo y obtiene productos
             interval_result = self._run_interval(decision_id, 
-                current_time_sec, 
+                self.current_time_sec, 
                 actions_dict, 
                 self.prev_agent_state, 
                 self.prev_dynamic_system_state_norm_dict
@@ -147,10 +153,10 @@ class SimulationManager:
             # 6.5. Actualiza acumuladores y estado para siguiente intervalo
             n_steps_executed = interval_result['interval_metadata']['n_steps_executed']
             terminated = interval_result['interval_level_data']['simulation_state_dict']['terminated']
-            termination_reason = interval_result['interval_level_data']['simulation_state_dict']['termination_reason']
-            total_reward += interval_result['interval_level_data']['global_interval_reward']
+            self.termination_reason = interval_result['interval_level_data']['simulation_state_dict']['termination_reason']
+            self.total_reward += interval_result['interval_level_data']['global_interval_reward']
             step_idx_global += n_steps_executed
-            current_time_sec += n_steps_executed * self.dt_sec
+            self.current_time_sec += n_steps_executed * self.dt_sec
             decision_id += 1
             total_agent_decisions += 1
             self.prev_dynamic_system_state_dict = self.dynamic_system_base.get_dynamic_system_state('raw')
@@ -160,17 +166,17 @@ class SimulationManager:
         
         # 7. Si terminó por tiempo, asignar razón
         if not terminated:
-            termination_reason = "time_limit"
+            self.termination_reason = "time_limit"
         
         # 8. Cierre del episodio: construir end_episode_data y commit a disco
         episode_reward_summary = self.reward_calculator.get_episode_summary_rewards()
         
         end_episode_data = {
             'end_terminated': terminated,
-            'end_termination_reason': termination_reason,
+            'end_termination_reason': self.termination_reason,
             'accumulated_band_bonus': episode_reward_summary['accumulated_band_bonus'],
             'goal_bonus': episode_reward_summary['goal_bonus'],
-            'total_reward': total_reward,
+            'total_reward': self.total_reward,
             'total_agent_decisions': total_agent_decisions
         }
         self.metric_collector.on_episode_end(episode_id, end_episode_data)
