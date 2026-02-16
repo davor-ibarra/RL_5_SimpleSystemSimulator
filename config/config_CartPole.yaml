@@ -165,10 +165,10 @@ reward_base:
       method: lineal_combination            # lineal_combination | weighted_exponential
       lineal_combination_params:
         features:
-          L_e:       {weight: 0.35}           # Peso del error
-          L_edot:    {weight: 0.35}           # Peso de la derivada del error
+          L_e:       {weight: 0.2}           # Peso del error
+          L_edot:    {weight: 0.2}           # Peso de la derivada del error
           L_I:       {weight: 0.0}            # Peso de la integral del error
-          L_delta_u: {weight: 0.3}            # Peso de la variación de acción de control
+          L_delta_u: {weight: 0.6}            # Peso de la variación de acción de control
       weighted_exponential_params:
         features:
           L_e:       {weight: 1.0, scaled: 0.1, setpoint: 0.0}
@@ -200,7 +200,7 @@ reward_base:
       bonus_approach:
         goal_bonus_reward:
           enabled: true
-          success_flags: ['goal_reached', 'stabilized']
+          success_flags: ['stabilization_success']
           method: decay                                    # static | decay
           static_params:
             bonus_value: 500.0
@@ -215,7 +215,7 @@ reward_base:
           per_step_band_bonus: 0.004           # Bono por cada dt dentro de la zona ampliada
           max_total_band_bonus: 1000.0        # Tope máximo acumulado por episodio (None: ilimitado)
           ranges: {
-                error_cart_position: [-0.08, 0.08]  # [-0.08, 0.08]   [-1.08, -0.92]
+                error_cart_position: [-0.2, 0.2]  # [-0.08, 0.08]   [-1.08, -0.92]
                 }
       # Conditional Approach
       conditional_approach:

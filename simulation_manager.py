@@ -202,8 +202,6 @@ class SimulationManager:
         """
         # 1. Inicializar contenedor del intervalo (flat records)
         flat_step_records = []
-        terminated = False
-        termination_reason = ""
         n_steps_executed = 0
         
         # 2. Ejecutar el step-loop del intervalo
@@ -217,7 +215,7 @@ class SimulationManager:
             current_state_norm_dict = self.dynamic_system_base.step(u_total, self.dt_sec)
             
             # 2.3. Evaluar condición de término
-            terminated, termination_reason = self.dynamic_system_base.check_termination()
+            terminated, self.termination_reason = self.dynamic_system_base.check_termination()
             
             # 2.4. Registrar step en el collector (dict plano vía get_records())
             step_flat_data = {'t_sec': self.dynamic_system_base.current_time}
@@ -241,7 +239,7 @@ class SimulationManager:
         # 4. Calcular recompensa del intervalo (interval-level)
         # Tiempo al final del intervalo para cálculo de decay en goal_bonus
         end_time_sec = current_time_sec + n_steps_executed * self.dt_sec
-        reward_for_learning = self.reward_calculator.calculate(processed_metrics_dict, termination_reason, end_time_sec)
+        reward_for_learning = self.reward_calculator.calculate(processed_metrics_dict, self.termination_reason, end_time_sec)
         
         # 5. Ejecutar aprendizaje del agente
         current_controller_gains = self._get_controller_gains_dict()
@@ -260,7 +258,7 @@ class SimulationManager:
             'interval_level_data': {
                 'global_interval_reward': self.reward_calculator._last_global_interval_reward,
                 'learn_info': learn_info,
-                'simulation_state_dict': {'terminated': terminated, 'termination_reason': termination_reason}
+                'simulation_state_dict': {'terminated': terminated, 'termination_reason': self.termination_reason}
             }
         }
         

@@ -11,12 +11,11 @@ Outputs:
 - metadata.json: Snapshot de configuración
 - chunks/episode_chunk_*.json: Datos detallados por chunks
 - summary.xlsx: Fila por episodio (auto-generada desde end_episode_data + interval_data)
-- agent_state/agent_state_ep_*.pkl: Estado del agente
+- agent_state/agent_state_ep_*.xlsx: Estado del agente (Excel con hojas por agente)
 """
 
 import os
 import json
-import pickle
 from utils.numpy_encoder import NumpyEncoder, sanitize_for_json
 from utils.data_processing import calculate_episode_summary
 
@@ -168,22 +167,40 @@ class ResultHandler:
     
     def save_agent_state_learn_dict(self, state_dict, episode_id):
         """
-        Guarda estado del agente (Q-tables, visit counts) desde dict pre-extraído.
+        Guarda estado del agente (Q-tables, visit counts) en Excel.
+        Crea una hoja por agente con sus tablas Q y de visitas.
         
         Args:
             state_dict (dict): Estado serializable del agente (q_tables, visit_counts)
             episode_id (int): Identificador del episodio
         """
+        if not HAS_PANDAS:
+            return
+        
         filepath = self.get_agent_state_filepath(episode_id)
         
-        agent_state = {
-            'episode_id': episode_id,
-            **state_dict
-        }
+        q_tables = state_dict['q_tables']
+        visit_counts = state_dict['visit_counts']
         
-        # Guardar con pickle
-        with open(filepath, 'wb') as f:
-            pickle.dump(agent_state, f)
+        with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
+            for agent_name in q_tables:
+                q_table_data = q_tables[agent_name]
+                visit_data = visit_counts[agent_name]
+                
+                # Convertir a DataFrames
+                df_q = pd.DataFrame(q_table_data)
+                df_visits = pd.DataFrame(visit_data)
+                
+                # Escribir Q-Table con título
+                pd.DataFrame(["Q-Table"]).to_excel(writer, sheet_name=agent_name, startrow=0, startcol=0, index=False, header=False)
+                df_q.to_excel(writer, sheet_name=agent_name, startrow=1, startcol=0)
+                
+                # Determinar posición para Visit Counts
+                start_row_visits = len(df_q) + 4
+                
+                # Escribir Visit Counts con título
+                pd.DataFrame(["Visit Counts"]).to_excel(writer, sheet_name=agent_name, startrow=start_row_visits, startcol=0, index=False, header=False)
+                df_visits.to_excel(writer, sheet_name=agent_name, startrow=start_row_visits + 1, startcol=0)
     
     def finalize_run(self):
         """
@@ -226,7 +243,7 @@ class ResultHandler:
         Returns:
             str: Ruta completa del archivo de estado del agente
         """
-        return os.path.join(self.output_dir, f'agent_state_ep_{episode_id:06d}.pkl')
+        return os.path.join(self.output_dir, f'agent_state_ep_{episode_id}.xlsx')
     
     # ==================== MÉTODOS DE LECTURA (para visualización) ====================
     
