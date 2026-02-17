@@ -200,10 +200,6 @@ class MetricProcessing:
             # Extraer valores de la serie
             values = self._extract_signal_series(step_records, signal_key)
             
-            # Si no hay valores, continuar sin agregar esta feature
-            if not values:
-                continue
-            
             # Obtener config de normalización para esta feature (puede no existir)
             if feature_key in var_norm_params:
                 feature_norm_config = var_norm_params[feature_key]
@@ -213,9 +209,13 @@ class MetricProcessing:
                 # Default si no hay config específica
                 method = 'mean_squared'
                 value_range = [-1.0, 1.0]
-            
-            # Agregar según método
-            aggregated = self._aggregate_with_method(values, method)
+
+            # Si no hay valores, usar default (0.0) para asegurar que la llave exista
+            if not values:
+                aggregated = 0.0
+            else:
+                # Agregar según método
+                aggregated = self._aggregate_with_method(values, method)
             
             # Normalizar solo si está habilitado
             if normalization_enabled:

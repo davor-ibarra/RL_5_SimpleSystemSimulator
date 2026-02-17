@@ -160,6 +160,7 @@ class SimulationManager:
             decision_id += 1
             total_agent_decisions += 1
             self.prev_dynamic_system_state_dict = self.dynamic_system_base.get_dynamic_system_state('raw')
+            self.prev_dynamic_system_state_norm_dict = self.dynamic_system_base.get_dynamic_system_state('normalized')
             current_gains_for_agent = self._get_gains_for_agent()
             self.prev_agent_state = self.agent_base.build_agent_state(self.prev_dynamic_system_state_dict, current_gains_for_agent)
             self.prev_actions_dict = actions_dict

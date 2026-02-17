@@ -211,7 +211,11 @@ class PIDController:
         self.is_saturated = is_saturated_global
         
         # Calcular acción de control efectiva
-        scaling_factor = u_total_saturated / u_total_raw
+        if u_total_raw != 0:
+            scaling_factor = u_total_saturated / u_total_raw
+        else:
+            scaling_factor = 1.0
+            
         self.u_eff = scaling_factor * self.control_action
         self.delta_u_eff = self.u_eff - self.prev_u_eff
         self.prev_u_eff = self.u_eff
