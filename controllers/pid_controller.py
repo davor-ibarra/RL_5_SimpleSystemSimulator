@@ -60,12 +60,16 @@ class PIDController:
         
         # Estado de saturación (será actualizado por controller_base)
         self.is_saturated = False
-        self.saturation_proportion = 0.0
+        self.u_eff = 0.0
+        self.prev_u_eff = 0.0
+        self.delta_u_eff = 0.0
 
-        # Anti-windup (solo global desde ControllerBase)
+        # Anti-windup
         self.antiwindup_enabled = self.controller_config['params']['anti_windup']['enabled']
         self.antiwindup_method = self.controller_config['params']['anti_windup']['method']
         self.back_calculation_betha = self.controller_config['params']['anti_windup']['back_calculation_betha']
+
+
     
     def _normalize_setpoint(self):
         """
@@ -150,6 +154,18 @@ class PIDController:
         
         return self.control_action
     
+    def _apply_antiwindup_correction(self, correction, dt_sec):
+        """
+        Acepta correcciones anti-windup globales desde ControllerBase.
+        Se aplica cuando hay saturación global y se reparte proporcionalmente.
+        
+        Args:
+            correction (float): Corrección anti-windup (error de saturación ponderado)
+            dt_sec (float): Paso de tiempo (para métodos back_calculation futuros)
+        """
+        if self.antiwindup_method == 'conditional':
+            self._apply_conditional_antiwindup_correction(correction)
+    
     def _apply_conditional_antiwindup_correction(self, e_sat):
         """
         Aplica corrección antiwindup al integrador.
@@ -163,6 +179,9 @@ class PIDController:
             integral_correction = e_sat / self.ki
             self.integral_error -= integral_correction
     
+    
+    # --- Public methods ---
+
     def update_gains(self, kp, ki, kd):
         """
         Actualiza las ganancias del controlador PID.
@@ -176,46 +195,33 @@ class PIDController:
         self.ki = ki
         self.kd = kd
     
-    def _get_current_controller_gains(self):
+    def get_current_controller_gains(self):
         """
         Retorna las ganancias del controlador PID.
         
         Returns:
-            tuple: (kp, ki, kd)
+            dict: {'kp': kp, 'ki': ki, 'kd': kd}
         """
-        return self.kp, self.ki, self.kd
+        return {'kp': self.kp, 'ki': self.ki, 'kd': self.kd}
 
-    def apply_antiwindup_correction(self, correction, dt_sec):
+    def return_state_to_controller(self, u_total_saturated, u_total_raw, is_saturated_global, dt_sec):
         """
-        Acepta correcciones anti-windup globales desde ControllerBase.
-        Se aplica cuando hay saturación global y se reparte proporcionalmente.
-        
-        Args:
-            correction (float): Corrección anti-windup (error de saturación ponderado)
-            dt_sec (float): Paso de tiempo (para métodos back_calculation futuros)
+        Retorna el estado del controlador base a cada controlador.
         """
-        # Verificar que el método sea 'conditional'
-        if self.antiwindup_method != 'conditional':
-            return
+        self.is_saturated = is_saturated_global
         
-        # Reutilizar la misma lógica del antiwindup local
-        self._apply_conditional_antiwindup_correction(correction)
-    
-    def set_saturation_status(self, is_saturated, u_total_raw, u_total_saturated):
-        """
-        Actualiza el estado de saturación desde el controlador base.
+        # Calcular acción de control efectiva
+        scaling_factor = u_total_saturated / u_total_raw
+        self.u_eff = scaling_factor * self.control_action
+        self.delta_u_eff = self.u_eff - self.prev_u_eff
+        self.prev_u_eff = self.u_eff
         
-        Args:
-            is_saturated (bool): Si hay saturación global
-            u_total_raw (float): Acción de control total sin saturar
-            u_total_saturated (float): Acción de control total saturada
-        """
-        self.is_saturated = is_saturated
-        
-        if is_saturated and u_total_raw != 0:
-            self.saturation_proportion = abs(u_total_raw - u_total_saturated) / abs(u_total_raw)
-        else:
-            self.saturation_proportion = 0.0
+        # Calcular error de saturación
+        e_sat = self.u_eff - self.control_action
+
+        # Aplicar corrección antiwindup
+        if self.is_saturated and self.antiwindup_enabled:
+            self._apply_antiwindup_correction(e_sat, dt_sec)
     
     def get_controller_record(self):
         """
@@ -233,8 +239,9 @@ class PIDController:
             f'control_action_{self.var_obj}': self.control_action,
             f'prev_control_action_{self.var_obj}': self.prev_control_action,
             f'delta_control_action_{self.var_obj}': self.delta_control_action,
-            f'is_saturated_{self.var_obj}': self.is_saturated,
-            f'saturation_proportion_{self.var_obj}': self.saturation_proportion,
+            f'u_eff_{self.var_obj}': self.u_eff,
+            f'prev_u_eff_{self.var_obj}': self.prev_u_eff,
+            f'delta_u_eff_{self.var_obj}': self.delta_u_eff,
             f'kp_{self.var_obj}': self.kp,
             f'ki_{self.var_obj}': self.ki,
             f'kd_{self.var_obj}': self.kd

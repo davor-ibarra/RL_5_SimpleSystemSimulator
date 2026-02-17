@@ -186,7 +186,8 @@ class CartPoleDynamicSystem:
             if var_name in self.ranges_params:
                 in_min, in_max = self.ranges_params[var_name]
                 # Normalización lineal: [in_min, in_max] -> [out_min, out_max]
-                normalized_arr[idx] = out_min + (value - in_min) * (out_max - out_min) / (in_max - in_min)
+                norm = out_min + (value - in_min) * (out_max - out_min) / (in_max - in_min)
+                normalized_arr[idx] = np.clip(norm, out_min, out_max)
             else:
                 # Si no hay rango definido, mantener valor original
                 normalized_arr[idx] = value

@@ -88,61 +88,29 @@ class ControllerBase:
             individual_actions[controller_name] = action
         
         # 2. Sumar todas las acciones para obtener u_total sin saturar
-        u_total_raw = sum(individual_actions.values())
+        self.u_total_raw = sum(individual_actions.values())
         
         # 3. Aplicar saturación global (solo si está habilitada)
         if self.global_actuator_enabled:
-            u_total_saturated = max(self.u_min_global, min(self.u_max_global, u_total_raw))
+            self.u_total_saturated = max(self.u_min_global, min(self.u_max_global, self.u_total_raw))
         else:
-            u_total_saturated = u_total_raw
+            self.u_total_saturated = self.u_total_raw
         
-        # 4. Calcular delta de u_total y guardar estados para record
+        # 4. Calcular, guardar y actualizar estados para record
         self.prev_u_total = self.u_total
-        self.u_total = u_total_saturated
-        self.u_total_raw = u_total_raw
-        self.u_total_saturated = u_total_saturated
+        self.u_total = self.u_total_saturated
         self.delta_u_total = self.u_total - self.prev_u_total
+        self.is_saturated_global = self.global_actuator_enabled and (self.u_total_raw != self.u_total_saturated) and (self.u_total_raw != 0.0)
+        self._return_state_to_controllers()
         
-        # 5. Anti-windup Conditional: solo si hay saturación Y está habilitado
-        self.is_saturated_global = self.global_actuator_enabled and (u_total_raw != u_total_saturated)
-        if self.is_saturated_global:
-            saturation_error = u_total_raw - u_total_saturated
-            self._apply_antiwindup_corrections(individual_actions, saturation_error)
-        
-        # 6. Actualizar estado de saturación en cada controlador
-        for controller_name in self.controllers.keys():
-            self.controllers[controller_name].set_saturation_status(self.is_saturated_global, u_total_raw, u_total_saturated)
-        
-        # 7. Construir registro del estado del controlador (ELIMINADO - Recogido via get_records)
-        # controller_state_record = ...
-        
-        return u_total_saturated
+        return self.u_total_saturated
     
-    def _apply_antiwindup_corrections(self, individual_actions, saturation_error):
+    def _return_state_to_controllers(self):
         """
-        Distribuye correcciones anti-windup a cada controlador.
-        Corrección proporcional a la contribución de cada controlador.
-        Solo aplica si el controlador tiene anti-windup habilitado.
-        
-        Args:
-            individual_actions (dict): Acciones individuales por controlador
-            saturation_error (float): Error de saturación (u_raw - u_saturated)
+        Retorna el estado del controlador base a cada controlador.
         """
-        total_contribution = sum(abs(individual_actions[cn]) for cn in self.controllers.keys())
-        
-        if total_contribution == 0:
-            return
-        
-        for controller_name in self.controllers.keys():
-            controller = self.controllers[controller_name]
-            
-            # Solo aplicar si el controlador tiene anti-windup habilitado
-            if not controller.antiwindup_enabled:
-                continue
-            
-            contribution_ratio = abs(individual_actions[controller_name]) / total_contribution
-            correction = saturation_error * contribution_ratio
-            controller.apply_antiwindup_correction(correction, self.dt_sec)
+        for controller_name, controller in self.controllers.items():
+            controller.return_state_to_controller(self.u_total_saturated, self.u_total_raw, self.is_saturated_global, self.dt_sec)
     
     def get_records(self):
         """

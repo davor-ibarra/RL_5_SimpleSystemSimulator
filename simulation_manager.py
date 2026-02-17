@@ -113,8 +113,8 @@ class SimulationManager:
         # 3. Inicializar estado previo necesario para decisiones
         self.prev_dynamic_system_state_dict = self.dynamic_system_base.get_dynamic_system_state('raw')
         self.prev_dynamic_system_state_norm_dict = self.dynamic_system_base.get_dynamic_system_state('normalized')
-        current_controller_gains = self._get_controller_gains_dict()
-        self.prev_agent_state = self.agent_base.build_agent_state(self.prev_dynamic_system_state_dict, current_controller_gains)
+        current_gains_for_agent = self._get_gains_for_agent()
+        self.prev_agent_state = self.agent_base.build_agent_state(self.prev_dynamic_system_state_dict, current_gains_for_agent)
         
         # 4. Construir prev_actions_dict inicial (todas las acciones en "mantener" = 1)
         self.prev_actions_dict = self._build_initial_actions_dict()
@@ -160,8 +160,8 @@ class SimulationManager:
             decision_id += 1
             total_agent_decisions += 1
             self.prev_dynamic_system_state_dict = self.dynamic_system_base.get_dynamic_system_state('raw')
-            current_controller_gains = self._get_controller_gains_dict()
-            self.prev_agent_state = self.agent_base.build_agent_state(self.prev_dynamic_system_state_dict, current_controller_gains)
+            current_gains_for_agent = self._get_gains_for_agent()
+            self.prev_agent_state = self.agent_base.build_agent_state(self.prev_dynamic_system_state_dict, current_gains_for_agent)
             self.prev_actions_dict = actions_dict
         
         # 7. Si terminó por tiempo, asignar razón
@@ -242,8 +242,8 @@ class SimulationManager:
         reward_for_learning = self.reward_calculator.calculate(processed_metrics_dict, self.termination_reason, end_time_sec)
         
         # 5. Ejecutar aprendizaje del agente
-        current_controller_gains = self._get_controller_gains_dict()
-        next_agent_state = self.agent_base.build_agent_state(current_state_norm_dict, current_controller_gains)
+        current_gains_for_agent = self._get_gains_for_agent()
+        next_agent_state = self.agent_base.build_agent_state(current_state_norm_dict, current_gains_for_agent)
         learn_info = self.agent_base.learn(
             prev_agent_state, next_agent_state, actions_dict, reward_for_learning, terminated
         )
@@ -367,12 +367,13 @@ class SimulationManager:
         # Usar mapping precomputado para obtener valores iniciales
         for agent_name, (controller_name, gain_type) in self.agent_to_controller_map.items():
             controller = self.controllers[controller_name]
-            initial_actions['vars_values'][agent_name] = getattr(controller, gain_type)
+            gains = controller.get_current_controller_gains()
+            initial_actions['vars_values'][agent_name] = gains[gain_type]
             initial_actions['vars_decision'][f'action_{agent_name}'] = 1
         
         return initial_actions
     
-    def _get_controller_gains_dict(self):
+    def _get_gains_for_agent(self):
         """
         Construye diccionario de ganancias actuales de controladores.
         Formato: {agent_name: value}
@@ -384,7 +385,8 @@ class SimulationManager:
         
         for agent_name, (controller_name, gain_type) in self.agent_to_controller_map.items():
             controller = self.controllers[controller_name]
-            gains_dict[agent_name] = getattr(controller, gain_type)
+            gains = controller.get_current_controller_gains()
+            gains_dict[agent_name] = gains[gain_type]
         
         return gains_dict
     

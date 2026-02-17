@@ -29,42 +29,40 @@ episode_data:
     u_total_saturated: []
     is_saturated_global: []
     #saturation_error_global: []
-    prev_u_total: []
+    #prev_u_total: []
     delta_u_total: []
-
-    # contrib per controller
-    u_contrib_pendulum_angle: []
-    u_contrib_cart_position: []
 
     # ---- per-controller canonical PID signals (step-level) ----
     # naming: <signal>_<controller_name>_<var_obj>
     # examples:
     error_pendulum_angle: []
     error_cart_position: []
+    #prev_error_pendulum_angle: []
+    #prev_error_cart_position: []
+    delta_error_pendulum_angle: []
+    delta_error_cart_position: []
     derivative_error_pendulum_angle: []
     derivative_error_cart_position: []
     integral_error_pendulum_angle: []
     integral_error_cart_position: []
     control_action_pendulum_angle: []
     control_action_cart_position: []
+    #prev_control_action_pendulum_angle: []
+    #prev_control_action_cart_position: []
     delta_control_action_pendulum_angle: []
     delta_control_action_cart_position: []
-    is_saturated_pendulum_angle: []
-    is_saturated_cart_position: []
-    saturation_proportion_pendulum_angle: []
-    saturation_proportion_cart_position: []
+    u_eff_pendulum_angle: []
+    u_eff_cart_position: []
+    #prev_u_eff_pendulum_angle: []
+    #prev_u_eff_cart_position: []
+    delta_u_eff_pendulum_angle: []
+    delta_u_eff_cart_position: []
     kp_pendulum_angle: []
     kp_cart_position: []
     ki_pendulum_angle: []
     ki_cart_position: []
     kd_pendulum_angle: []
     kd_cart_position: []
-    prev_error_pendulum_angle: []
-    prev_error_cart_position: []
-    delta_error_pendulum_angle: []
-    delta_error_cart_position: []
-    prev_control_action_pendulum_angle: []
-    prev_control_action_cart_position: []
 
   interval_data:
     n_interval: 0
@@ -75,8 +73,8 @@ episode_data:
     interval_t_start_sec: []
     interval_n_steps: []
 
-    terminated: []
-    termination_reason: []
+    #terminated: []
+    #termination_reason: []
 
     # ---- metrics / reward components (interval-level) ----
     # per controller
@@ -177,3 +175,5 @@ episode_data:
 
     # episode metadata
     total_agent_decisions: 0
+    epsilon: 0.0
+    learning_rate: 0.0

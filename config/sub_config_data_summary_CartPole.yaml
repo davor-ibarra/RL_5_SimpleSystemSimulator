@@ -8,7 +8,7 @@ data_summary:
     final_t_sec,  
     total_reward, 
     performance,
-    termination_reason,
+    end_termination_reason,
     final_kp_pendulum_angle, 
     final_ki_pendulum_angle, 
     final_kd_pendulum_angle,

@@ -184,8 +184,8 @@ class MetricProcessing:
             'e': f'error_{var_obj}',
             'edot': f'derivative_error_{var_obj}',
             'I': f'integral_error_{var_obj}',
-            'u': f'control_action_{var_obj}',
-            'delta_u': f'delta_control_action_{var_obj}'
+            'u': f'u_eff_{var_obj}',
+            'delta_u': f'delta_u_eff_{var_obj}'
         }
         
         features = {}
@@ -285,7 +285,7 @@ class MetricProcessing:
             extras[error_key] = error_series
             
             # Extraer control_action crudo (para penalty de esfuerzo)
-            action_key = f'control_action_{var_obj}'
+            action_key = f'u_eff_{var_obj}'
             action_series = self._extract_signal_series(step_records, action_key)
             extras[action_key] = action_series
         

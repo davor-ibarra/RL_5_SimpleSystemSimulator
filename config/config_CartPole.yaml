@@ -29,21 +29,21 @@ dynamic_system:
       cart_position: [-5.0, 5.0]
       pendulum_angle: [-1.0472, 1.0472]
     stabilization_criteria:
-      pendulum_angle: [-0.005, 0.005]                         # Range for pendulum angle (rad)
-      pendulum_velocity: [-0.05, 0.05]                        # Range for angular velocity (rad/s)
-      cart_position: [-0.05, 0.05]                            # Range for cart position (m)   [-0.05, 0.05]   [-1.05, -0.95]
-      cart_velocity: [-0.01, 0.01]                            # Range for cart velocity (m/s)
+      pendulum_angle: [-0.02, 0.02]                         # Range for pendulum angle (rad)
+      pendulum_velocity: [-0.1, 0.1]                        # Range for angular velocity (rad/s)
+      cart_position: [-0.1, 0.1]                            # Range for cart position (m)   [-0.05, 0.05]   [-1.05, -0.95]
+      cart_velocity: [-0.1, 0.1]                            # Range for cart velocity (m/s)
   reference_system_correction:
     enabled: true
     vars_correction: [pendulum_angle]
   state_normalization:
     enabled: true
     output_limits: [-1.0, 1.0]
-    ranges_params: 
-      cart_position: [-5.0, 5.0]
-      cart_velocity: [-0.01, 0.01]
+    ranges_params:
       pendulum_angle: [-1.0472, 1.0472]
-      pendulum_velocity: [-0.05, 0.05]
+      pendulum_velocity: [-6.0, 6.0]
+      cart_position: [-5.0, 5.0]
+      cart_velocity: [-3.0, 3.0]
 # --- Controller ---
 controller_base:
   mixing_policy: sum
@@ -165,10 +165,10 @@ reward_base:
       method: lineal_combination            # lineal_combination | weighted_exponential
       lineal_combination_params:
         features:
-          L_e:       {weight: 0.2}           # Peso del error
+          L_e:       {weight: 0.6}           # Peso del error
           L_edot:    {weight: 0.2}           # Peso de la derivada del error
           L_I:       {weight: 0.0}            # Peso de la integral del error
-          L_delta_u: {weight: 0.6}            # Peso de la variación de acción de control
+          L_delta_u: {weight: 0.2}            # Peso de la variación de acción de control
       weighted_exponential_params:
         features:
           L_e:       {weight: 1.0, scaled: 0.1, setpoint: 0.0}
