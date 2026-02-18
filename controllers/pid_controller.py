@@ -130,7 +130,7 @@ class PIDController:
         current_value = dynamic_state_dict[self.var_obj]
         
         # Calcular error usando setpoint normalizado
-        self.error = self.setpoint_normalized - current_value
+        self.error = current_value - self.setpoint_normalized
         
         # Calcular derivada del error
         self.derivative_error = (self.error - self.prev_error) / dt_sec

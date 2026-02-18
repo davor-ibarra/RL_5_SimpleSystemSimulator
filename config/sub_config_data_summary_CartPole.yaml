@@ -17,16 +17,23 @@ data_summary:
     final_kd_cart_position
   ]
   data_stats: [
-    cart_position_raw,
-    cart_position_norm,
-    cart_velocity_raw,
-    cart_velocity_norm,
     pendulum_angle_raw,
     pendulum_angle_norm,
     pendulum_velocity_raw,
     pendulum_velocity_norm,
+    cart_position_raw,
+    cart_position_norm,
+    cart_velocity_raw,
+    cart_velocity_norm,
     error_pendulum_angle,
+    derivative_error_pendulum_angle,
+    u_eff_pendulum_angle,
+    delta_u_eff_pendulum_angle,
     error_cart_position,
+    derivative_error_cart_position,
+    u_eff_cart_position,
+    delta_u_eff_cart_position,
+    cart_force
     L_e_pendulum_angle,
     L_e_cart_position,
     L_edot_pendulum_angle,

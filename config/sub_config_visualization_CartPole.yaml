@@ -297,10 +297,10 @@ plots:
       xlabel_fontsize: 28
       ylabel: Cart Velocity (m/s)
       ylabel_fontsize: 28
-      xmin: -2.0
-      xmax: 2.0
-      ymin: -2.0
-      ymax: 2.0
+      xmin: -5.0
+      xmax: 5.0
+      ymin: -5.0
+      ymax: 5.0
       tick_fontsize: 24
       xtick_rotation: 30
       num_xticks: 5

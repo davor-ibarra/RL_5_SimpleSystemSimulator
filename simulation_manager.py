@@ -92,6 +92,9 @@ class SimulationManager:
             print(f"\n[SIMULATION_MANAGER] === Episodio {episode_id + 1}/{self.n_episodes} ===")
             self._run_episode(episode_id)
             print(f"\n[SIMULATION_MANAGER] --- T_max = {self.current_time_sec}  |  Total Reward = {self.total_reward}  |  Termination Reason = {self.termination_reason} ---")
+            current_gains = self._get_gains_for_agent()
+            formatted_gains = "  |  ".join([f"{k} = {round(v, 1):.1f}" for k, v in current_gains.items()])
+            print(f"\n[SIMULATION_MANAGER] --- {formatted_gains} ---")
         
         self.metric_collector.finalize_run()
         print(f"\n[SIMULATION_MANAGER] Simulación completada")
@@ -332,11 +335,13 @@ class SimulationManager:
     def _apply_actions_to_controllers(self, actions_dict):
         """
         Aplica las decisiones del agente a las ganancias de cada controlador.
+        Clipea cada ganancia al rango [min, max] definido en agent_config.
         
         Args:
             actions_dict (dict): Diccionario de acciones del agente
         """
         delta_gain = actions_dict['vars_delta']['delta_gain']
+        agents_config = self.config_main['agent_base']['agent_config']['agents']
         
         # Agrupar nuevas ganancias por controlador usando mapping precomputado
         controller_gains = {}
@@ -347,6 +352,11 @@ class SimulationManager:
             current_value = actions_dict['vars_values'][agent_name]
             action_decision = actions_dict['vars_decision'][f'action_{agent_name}']
             new_value = current_value + (action_decision - 1) * delta_gain
+            
+            # Clipear al rango [min, max] definido en config del agente
+            agent_cfg = agents_config[agent_name]
+            new_value = max(agent_cfg['min'], min(agent_cfg['max'], new_value))
+            
             controller_gains[controller_name][gain_type] = new_value
         
         # Aplicar ganancias a cada controlador

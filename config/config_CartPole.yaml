@@ -41,9 +41,9 @@ dynamic_system:
     output_limits: [-1.0, 1.0]
     ranges_params:
       pendulum_angle: [-1.0472, 1.0472]
-      pendulum_velocity: [-6.0, 6.0]
-      cart_position: [-5.0, 5.0]
-      cart_velocity: [-3.0, 3.0]
+      pendulum_velocity: [-5.0, 5.0]
+      cart_position: [-2.0, 2.0]
+      cart_velocity: [-5.0, 5.0]
 # --- Controller ---
 controller_base:
   mixing_policy: sum
@@ -54,7 +54,7 @@ controller_base:
       controller_name: controller_pendulum_angle
       module_path: controllers.pid_controller
       class_name: PIDController
-      initial_conditions: {kp: 1.0, ki: 1.0, kd: 1.0}
+      initial_conditions: {kp: 0.1, ki: 0.1, kd: 0.1}
       params:
         name_objective_var: 'pendulum_angle'
         setpoint: 0.0
@@ -62,12 +62,12 @@ controller_base:
         anti_windup:
           enabled: true
           method: 'conditional'                                # 'perfect_back_calculation' | 'back_calculation' | 'conditional'
-          back_calculation_betha: 0.2
+          back_calculation_betha: 0.02
     controller_cart_position:
       controller_name: controller_cart_position
       module_path: controllers.pid_controller
       class_name: PIDController
-      initial_conditions: {kp: 1.0, ki: 1.0, kd: 1.0}
+      initial_conditions: {kp: 0.1, ki: 0.1, kd: 0.1}
       params:
         name_objective_var: 'cart_position'
         setpoint: 0.0
@@ -75,7 +75,7 @@ controller_base:
         anti_windup:
           enabled: true
           method: 'conditional'                                # 'perfect_back_calculation' | 'back_calculation' | 'conditional'
-          back_calculation_betha: 0.2
+          back_calculation_betha: 0.02
 # --- Agent ---
 agent_base:
   agent_base_name: pid_qlearning
@@ -104,12 +104,12 @@ agent_base:
       delta_gain: 0.2
     # Agent and State Configuration
     agents:
-      kp_pendulum_angle:       {enabled_agent: true, min: 0.0, max: 5.0, bins: 26, state_vars: []}
-      ki_pendulum_angle:       {enabled_agent: true, min: 0.0, max: 5.0, bins: 26, state_vars: []}
-      kd_pendulum_angle:       {enabled_agent: true, min: 0.0, max: 5.0, bins: 26, state_vars: []}
-      kp_cart_position:        {enabled_agent: true, min: 0.0, max: 5.0, bins: 26, state_vars: []}
-      ki_cart_position:        {enabled_agent: true, min: 0.0, max: 5.0, bins: 26, state_vars: []}
-      kd_cart_position:        {enabled_agent: true, min: 0.0, max: 5.0, bins: 26, state_vars: []}
+      kp_pendulum_angle:       {enabled_agent: true, min: 0.0, max: 0.5, bins: 26, state_vars: []}
+      ki_pendulum_angle:       {enabled_agent: true, min: 0.0, max: 0.5, bins: 26, state_vars: []}
+      kd_pendulum_angle:       {enabled_agent: true, min: 0.0, max: 0.5, bins: 26, state_vars: []}
+      kp_cart_position:        {enabled_agent: true, min: 0.0, max: 0.5, bins: 26, state_vars: []}
+      ki_cart_position:        {enabled_agent: true, min: 0.0, max: 0.5, bins: 26, state_vars: []}
+      kd_cart_position:        {enabled_agent: true, min: 0.0, max: 0.5, bins: 26, state_vars: []}
       error_pendulum_angle: {enabled_agent: false, min: -0.5, max: 0.5, bins: 3, state_vars: []}
       error_cart_position: {enabled_agent: false, min: -0.5, max: 0.5, bins: 3, state_vars: []}
 # --- Reward Configuration ---
@@ -143,16 +143,16 @@ reward_base:
         params:  # abs | accum | mean | mean_squared | rms // proportion | trend | change_and_osci | keep_last
           pendulum_angle:
             e: {method: mean_squared, range: [-1.0, 1.0]}         # Error en espacio normalizado [-1, 1]
-            edot: {method: mean_squared, range: [-50.0, 50.0]}    # Derivada error normalizado (conservador)
+            edot: {method: mean_squared, range: [-150.0, 150.0]}    # Derivada error normalizado (conservador)
             I: {method: mean_squared, range: [-5.0, 5.0]}         # Integral error normalizado (acumulación)
             u: {method: mean_squared, range: [-1.0, 1.0]}         # Acción de control [-1, 1]
-            delta_u: {method: mean_squared, range: [-2.0, 2.0]}   # Variación acción [-2, 2] máximo
+            delta_u: {method: mean_squared, range: [-1.0, 1.0]}   # Variación acción [-2, 2] máximo
           cart_position:
             e: {method: mean_squared, range: [-1.0, 1.0]}         # Error en espacio normalizado [-1, 1]
-            edot: {method: mean_squared, range: [-50.0, 50.0]}    # Derivada error normalizado (conservador)
+            edot: {method: mean_squared, range: [-5.0, 5.0]}    # Derivada error normalizado (conservador)
             I: {method: mean_squared, range: [-5.0, 5.0]}         # Integral error normalizado (acumulación)
             u: {method: mean_squared, range: [-1.0, 1.0]}         # Acción de control [-1, 1]
-            delta_u: {method: mean_squared, range: [-2.0, 2.0]}   # Variación acción [-2, 2] máximo
+            delta_u: {method: mean_squared, range: [-1.0, 1.0]}   # Variación acción [-2, 2] máximo
           global_vars:
             #u_total:       {method: mean_squared ,range: [-1, 1]}
             #delta_u_total: {method: mean_squared, range: [-2, 2]}
