@@ -173,7 +173,7 @@ plots:
   # --- Example Heatmap (Time vs Angle) stabilization_success ---
   - type: heatmap
     enabled: true
-    name: "heatmap_time_vs_pendulum_angle(stabilization_success)"
+    name: "heatmap_t_vs_angle_stab"
     source: detailed # Use data from the list of all episode details
     x_variable: t_sec
     y_variable: pendulum_angle_raw
@@ -245,7 +245,7 @@ plots:
   # --- Example Heatmap (Angle vs Angular Velocity) ---
   - type: heatmap
     enabled: true
-    name: "heatmap_pendulum_angle_vs_pendulum_velocity"
+    name: "heatmap_angle_vs_anglevel"
     source: detailed
     x_variable: pendulum_angle_raw
     y_variable: pendulum_velocity_raw
@@ -281,7 +281,7 @@ plots:
   # --- Example Heatmap (Cart Position vs Cart Velocity) ---
   - type: heatmap
     enabled: true
-    name: "heatmap_cart_position_vs_cart_velocity"
+    name: "heatmap_cartpos_vs_cartvel"
     source: detailed
     x_variable: cart_position_raw
     y_variable: cart_velocity_raw
@@ -353,7 +353,7 @@ plots:
   # --- Example Heatmap (Time vs Cart Position) stabilization_success ---
   - type: heatmap
     enabled: false
-    name: "heatmap_time_vs_cart_position(stabilization_success)"
+    name: "heatmap_t_vs_cartpos_stab"
     source: detailed # Use data from the list of all episode details
     x_variable: t_sec
     y_variable: cart_position_raw
@@ -389,7 +389,7 @@ plots:
   # --- Example Heatmap (Time vs Cart Velocity) stabilization_success ---
   - type: heatmap
     enabled: false
-    name: "heatmap_time_vs_cart_velocity(stabilization_success)"
+    name: "heatmap_t_vs_cartvel_stab"
     source: detailed # Use data from the list of all episode details
     x_variable: t_sec
     y_variable: cart_velocity_raw
@@ -461,7 +461,7 @@ plots:
   # --- Example Heatmap (Time vs normalize_control_action) ---
   - type: heatmap
     enabled: false
-    name: "heatmap_time_vs_pendulum_control_action"
+    name: "heatmap_t_vs_upend"
     source: detailed # Use data from the list of all episode details
     x_variable: t_sec
     y_variable: control_action_pendulum_angle
@@ -497,7 +497,7 @@ plots:
   # --- Example Heatmap (Time vs normalize_control_action) stabilization_success ---
   - type: heatmap
     enabled: false
-    name: "heatmap_time_vs_pendulum_control_action(stabilization_success)"
+    name: "heatmap_t_vs_upend_stab"
     source: detailed # Use data from the list of all episode details
     x_variable: t_sec
     y_variable: effective_action_pendulum_angle
@@ -533,7 +533,7 @@ plots:
   # --- Example Heatmap (Time vs u_total_saturated) ---
   - type: heatmap
     enabled: true
-    name: "heatmap_time_vs_u_total_saturated"
+    name: "heatmap_t_vs_ut_sat"
     source: detailed # Use data from the list of all episode details
     x_variable: t_sec
     y_variable: u_total_saturated
@@ -569,7 +569,7 @@ plots:
   # --- Example Heatmap (Time vs u_total_saturated) stabilization_success ---
   - type: heatmap
     enabled: true
-    name: "heatmap_time_vs_u_total_saturated(stabilization_success)"
+    name: "heatmap_t_vs_ut_sat_stab"
     source: detailed # Use data from the list of all episode details
     x_variable: t_sec
     y_variable: u_total_saturated
@@ -623,8 +623,8 @@ plots:
       ylabel_fontsize: 28
       xmin: 0
       xmax: 5
-      ymin: -20.0
-      ymax: 20.0
+      ymin: -30.0
+      ymax: 30.0
       tick_fontsize: 24
       xtick_rotation: 30
       num_xticks: 5

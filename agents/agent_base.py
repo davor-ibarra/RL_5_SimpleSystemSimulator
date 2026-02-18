@@ -36,7 +36,7 @@ class AgentBase:
         
         # Exponer atributos del específico para acceso desde simulador
         self.agent_names = self.agent_impl.agent_names
-        self.gain_step = self.agent_impl.gain_step
+        self.agent_gain_steps = self.agent_impl.agent_gain_steps
     
     def reset_episode(self):
         """
@@ -89,17 +89,24 @@ class AgentBase:
     
     def get_records(self):
         """
-        Retorna dict plano con TODOS los parámetros del agente para el MetricCollector.
-        Método estándar de registro — reemplaza get_params_dict() como interfaz
-        para la recolección de métricas.
-        
-        Incluye: epsilon, learning_rate, estadísticas Q-table por agente,
-        y cualquier otro parámetro expuesto por el agente específico.
+        Retorna dict plano con parámetros interval-level del agente para el MetricCollector.
+        Solo estadísticas Q-table y métricas que cambian por intervalo.
         
         Returns:
             dict: Registro plano interval-level del agente
         """
         return self.agent_impl.get_records()
+    
+    def get_agent_params_records(self):
+        """
+        Retorna dict plano con parámetros episode-level del agente.
+        Incluye: epsilon, learning_rate, y cualquier otro parámetro
+        que cambie solo por episodio.
+        
+        Returns:
+            dict: Registro plano episode-level del agente
+        """
+        return self.agent_impl.get_end_episode_records()
     
     def get_agent_state_learn_dict(self):
         """

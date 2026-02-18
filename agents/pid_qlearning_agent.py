@@ -41,17 +41,27 @@ class PIDQLearningAgent:
         self.learning_rate_decay_enabled = self.config_agent['params']['learning_rate_decay']['enabled']
         self.learning_rate_min = self.config_agent['params']['learning_rate_decay']['learning_rate_min']
         self.learning_rate_decay_factor = self.config_agent['params']['learning_rate_decay']['decay_factor']
+        self._is_first_episode = True
         
-        # Espacio de acciones
+        # Espacio de acciones (debe estar antes de _build_state_space que usa num_actions)
         self.action_space = self.config_agent['agent_config']['actions']['actions_space']
         self.num_actions = len(self.action_space)
-        self.gain_step = self.config_agent['agent_config']['actions']['delta_gain']
+        
+        # Construir espacio de estados
+        self._build_state_space()
+        
+        # Per-agent delta_gain desde config actions_values (despues del espacio de estados para reutilizar agent_names)
+        actions_values_config = self.config_agent['agent_config']['actions']['actions_values']
+        self.actions_values_mode = actions_values_config['mode']
+        self.agent_gain_steps = {}
+        for agent_name in self.agent_names:
+            if self.actions_values_mode == 'universal':
+                self.agent_gain_steps[agent_name] = actions_values_config['universal_params']['delta_gain']
+            elif self.actions_values_mode == 'per_agent':
+                self.agent_gain_steps[agent_name] = actions_values_config['per_agent_params']['delta_gain'][agent_name]
         
         # Valor inicial de Q-table
         self.q_init_value = 0.0
-        
-        # Construir espacio de estados (una sola vez)
-        self._build_state_space()
         
         # Inicializar Q-tables
         self.q_tables = {}
@@ -173,8 +183,12 @@ class PIDQLearningAgent:
     def reset_episode(self):
         """
         Resetea el agente al inicio de un episodio.
-        Aplica decay de epsilon y learning_rate.
+        Aplica decay de epsilon y learning_rate (excepto primer episodio).
         """
+        if self._is_first_episode:
+            self._is_first_episode = False
+            return
+        
         if self.epsilon_decay_enabled:
             self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay_factor)
         
@@ -210,7 +224,7 @@ class PIDQLearningAgent:
         actions_dict = {
             'vars_values': {},
             'vars_decision': {},
-            'vars_delta': {'delta_gain': self.gain_step}
+            'vars_delta': {}
         }
         
         for agent_name in self.agent_names:
@@ -233,6 +247,7 @@ class PIDQLearningAgent:
                 action_idx = int(np.random.choice(best_actions))
             
             actions_dict['vars_decision'][f'action_{agent_name}'] = action_idx
+            actions_dict['vars_delta'][f'delta_gain_{agent_name}'] = self.agent_gain_steps[agent_name]
         
         return actions_dict
     
@@ -300,15 +315,13 @@ class PIDQLearningAgent:
     def get_records(self):
         """
         Expone parámetros de telemetría ligera del agente (estadísticas agregadas).
-        No usar para persistencia completa; ver get_agent_state_dict().
+        Solo Q-table stats a nivel de intervalo.
+        Para epsilon/learning_rate usar get_end_episode_records().
         
         Returns:
-            dict: Parámetros agregados del agente
+            dict: Parámetros agregados del agente (interval-level)
         """
-        params = {
-            'epsilon': self.epsilon,
-            'learning_rate': self.learning_rate,
-        }
+        params = {}
         
         for agent_name in self.agent_names:
             q_table = self.q_tables[agent_name]
@@ -322,6 +335,19 @@ class PIDQLearningAgent:
             params[f'visits_coverage_{agent_name}'] = float(np.mean(visit_count > 0))
         
         return params
+    
+    def get_end_episode_records(self):
+        """
+        Expone parámetros del agente que cambian solo por episodio.
+        Diseñado para fusionarse con end_episode_data en SimulationManager.
+        
+        Returns:
+            dict: Parámetros episode-level del agente
+        """
+        return {
+            'epsilon': self.epsilon,
+            'learning_rate': self.learning_rate,
+        }
     
     def get_agent_state_learn_dict(self):
         """

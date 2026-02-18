@@ -54,7 +54,7 @@ controller_base:
       controller_name: controller_pendulum_angle
       module_path: controllers.pid_controller
       class_name: PIDController
-      initial_conditions: {kp: 0.1, ki: 0.1, kd: 0.1}
+      initial_conditions: {kp: 0.0, ki: 0.0, kd: 0.0}
       params:
         name_objective_var: 'pendulum_angle'
         setpoint: 0.0
@@ -67,11 +67,11 @@ controller_base:
       controller_name: controller_cart_position
       module_path: controllers.pid_controller
       class_name: PIDController
-      initial_conditions: {kp: 0.1, ki: 0.1, kd: 0.1}
+      initial_conditions: {kp: 0.0, ki: 0.0, kd: 0.0}
       params:
         name_objective_var: 'cart_position'
         setpoint: 0.0
-        error_is_setpoint_minus_pv: false
+        error_is_setpoint_minus_pv: true
         anti_windup:
           enabled: true
           method: 'conditional'                                # 'perfect_back_calculation' | 'back_calculation' | 'conditional'
@@ -101,7 +101,18 @@ agent_base:
     # Actions Configuration
     actions:
       actions_space: {0: 'decrease', 1: 'maintain', 2: 'increase'}
-      delta_gain: 0.2
+      actions_values:
+        mode: per_agent     # universal | per_agent
+        universal_params:
+          delta_gain: 0.2
+        per_agent_params:
+          delta_gain:
+            kp_pendulum_angle: 0.2
+            ki_pendulum_angle: 0.2
+            kd_pendulum_angle: 0.2
+            kp_cart_position: 0.2
+            ki_cart_position: 0.2
+            kd_cart_position: 0.2
     # Agent and State Configuration
     agents:
       kp_pendulum_angle:       {enabled_agent: true, min: 0.0, max: 0.5, bins: 26, state_vars: []}
@@ -142,17 +153,17 @@ reward_base:
         output_limits: [0.0, 1.0]     # [-1.0, 1.0] | [0.0, 1.0]
         params:  # abs | accum | mean | mean_squared | rms // proportion | trend | change_and_osci | keep_last
           pendulum_angle:
-            e: {method: mean_squared, range: [-1.0, 1.0]}         # Error en espacio normalizado [-1, 1]
-            edot: {method: mean_squared, range: [-150.0, 150.0]}    # Derivada error normalizado (conservador)
-            I: {method: mean_squared, range: [-5.0, 5.0]}         # Integral error normalizado (acumulación)
-            u: {method: mean_squared, range: [-1.0, 1.0]}         # Acción de control [-1, 1]
-            delta_u: {method: mean_squared, range: [-1.0, 1.0]}   # Variación acción [-2, 2] máximo
+            e: {method: mean, range: [-1.0, 1.0]}         # Error en espacio normalizado [-1, 1]
+            edot: {method: mean, range: [-150.0, 150.0]}    # Derivada error normalizado (conservador)
+            I: {method: mean, range: [-5.0, 5.0]}         # Integral error normalizado (acumulación)
+            u: {method: mean, range: [-1.0, 1.0]}         # Acción de control [-1, 1]
+            delta_u: {method: mean, range: [-1.0, 1.0]}   # Variación acción [-2, 2] máximo
           cart_position:
-            e: {method: mean_squared, range: [-1.0, 1.0]}         # Error en espacio normalizado [-1, 1]
-            edot: {method: mean_squared, range: [-5.0, 5.0]}    # Derivada error normalizado (conservador)
-            I: {method: mean_squared, range: [-5.0, 5.0]}         # Integral error normalizado (acumulación)
-            u: {method: mean_squared, range: [-1.0, 1.0]}         # Acción de control [-1, 1]
-            delta_u: {method: mean_squared, range: [-1.0, 1.0]}   # Variación acción [-2, 2] máximo
+            e: {method: mean, range: [-1.0, 1.0]}         # Error en espacio normalizado [-1, 1]
+            edot: {method: mean, range: [-5.0, 5.0]}    # Derivada error normalizado (conservador)
+            I: {method: mean, range: [-5.0, 5.0]}         # Integral error normalizado (acumulación)
+            u: {method: mean, range: [-1.0, 1.0]}         # Acción de control [-1, 1]
+            delta_u: {method: mean, range: [-1.0, 1.0]}   # Variación acción [-2, 2] máximo
           global_vars:
             #u_total:       {method: mean_squared ,range: [-1, 1]}
             #delta_u_total: {method: mean_squared, range: [-2, 2]}
@@ -177,7 +188,7 @@ reward_base:
           L_delta_u: {weight: 0.5, scaled: 0.25, setpoint: 0.0}
     # --- Extra Rewards ---
     extra_rewards:
-      enabled: true
+      enabled: false
       reward_extra_name: extra_rewards
       module_path: rewards.extra_rewards_handler
       class_name: ExtraRewardsHandler
@@ -199,7 +210,7 @@ reward_base:
       # Bonus Approach
       bonus_approach:
         goal_bonus_reward:
-          enabled: true
+          enabled: false
           success_flags: ['stabilization_success']
           method: decay                                    # static | decay
           static_params:
@@ -211,7 +222,7 @@ reward_base:
             time_constant_sec: 1.2
         # Bono de aproximación (zona ampliada)
         bandwidth_bonus:
-          enabled: true
+          enabled: false
           per_step_band_bonus: 0.004           # Bono por cada dt dentro de la zona ampliada
           max_total_band_bonus: 1000.0        # Tope máximo acumulado por episodio (None: ilimitado)
           ranges: {

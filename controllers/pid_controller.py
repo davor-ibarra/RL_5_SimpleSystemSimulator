@@ -38,6 +38,7 @@ class PIDController:
         # Objetivo controlado
         self.var_obj = self.controller_config['params']['name_objective_var']
         self.setpoint_raw = self.controller_config['params']['setpoint']
+        self.error_is_setpoint_minus_pv = self.controller_config['params']['error_is_setpoint_minus_pv']
         
         # Normalización de setpoint (usa config del dynamic_system si está habilitado)
         self.setpoint_normalized = self._normalize_setpoint()
@@ -52,6 +53,9 @@ class PIDController:
         self.derivative_error = 0.0
         self.integral_error = 0.0
         self.prev_error = 0.0
+
+        # First step flag
+        self.first_step = True
         
         # Acción de control
         self.control_action = 0.0
@@ -68,8 +72,6 @@ class PIDController:
         self.antiwindup_enabled = self.controller_config['params']['anti_windup']['enabled']
         self.antiwindup_method = self.controller_config['params']['anti_windup']['method']
         self.back_calculation_betha = self.controller_config['params']['anti_windup']['back_calculation_betha']
-
-
     
     def _normalize_setpoint(self):
         """
@@ -113,6 +115,7 @@ class PIDController:
         self.delta_control_action = 0.0
         self.is_saturated = False
         self.saturation_proportion = 0.0
+        self.first_step = True
     
     def compute(self, dynamic_state_dict, dt_sec):
         """
@@ -130,10 +133,13 @@ class PIDController:
         current_value = dynamic_state_dict[self.var_obj]
         
         # Calcular error usando setpoint normalizado
-        self.error = current_value - self.setpoint_normalized
+        self.error = self._calculate_error(current_value)
         
         # Calcular derivada del error
-        self.derivative_error = (self.error - self.prev_error) / dt_sec
+        if not self.first_step:
+            self.derivative_error = (self.error - self.prev_error) / dt_sec
+        else:
+            self.derivative_error = 0.0
         
         # Calcular integral del error (acumulación)
         self.integral_error += self.error * dt_sec
@@ -154,6 +160,21 @@ class PIDController:
         
         return self.control_action
     
+    def _calculate_error(self, current_value):
+        """
+        Calcula el error usando setpoint normalizado.
+        
+        Args:
+            current_value (float): Valor actual de la variable objetivo (normalizado)
+            
+        Returns:
+            float: Error
+        """
+        if self.error_is_setpoint_minus_pv:
+            return current_value - self.setpoint_normalized
+        else:
+            return self.setpoint_normalized - current_value
+
     def _apply_antiwindup_correction(self, correction, dt_sec):
         """
         Acepta correcciones anti-windup globales desde ControllerBase.

@@ -183,6 +183,7 @@ class SimulationManager:
             'total_reward': self.total_reward,
             'total_agent_decisions': total_agent_decisions
         }
+        end_episode_data.update(self.agent_base.get_agent_params_records())
         self.metric_collector.on_episode_end(episode_id, end_episode_data)
         
         # 9. Guardar estado del agente según periodicidad
@@ -340,7 +341,6 @@ class SimulationManager:
         Args:
             actions_dict (dict): Diccionario de acciones del agente
         """
-        delta_gain = actions_dict['vars_delta']['delta_gain']
         agents_config = self.config_main['agent_base']['agent_config']['agents']
         
         # Agrupar nuevas ganancias por controlador usando mapping precomputado
@@ -351,6 +351,7 @@ class SimulationManager:
             
             current_value = actions_dict['vars_values'][agent_name]
             action_decision = actions_dict['vars_decision'][f'action_{agent_name}']
+            delta_gain = actions_dict['vars_delta'][f'delta_gain_{agent_name}']
             new_value = current_value + (action_decision - 1) * delta_gain
             
             # Clipear al rango [min, max] definido en config del agente
