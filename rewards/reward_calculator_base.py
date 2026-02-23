@@ -289,7 +289,16 @@ class RewardCalculatorBase:
             dict: {agent_name: reward}
         """
         assign_dict = {}
-        lineal_params = individual_params['lineal_combination_params']
+        
+        # Use mathematical method from principal_reward_impl if instantiated, fallback to linear
+        method = 'lineal_combination'
+        if self.principal_reward_impl and hasattr(self.principal_reward_impl, 'method'):
+            method = self.principal_reward_impl.method
+        
+        if method == 'weighted_exponential':
+            params = individual_params.get('weighted_exponential_params', {})
+        else:
+            params = individual_params.get('lineal_combination_params', {})
         
         # Mapeo feature L_* → llave de peso w_*
         feature_to_weight_key = {
@@ -302,25 +311,48 @@ class RewardCalculatorBase:
         
         for agent_name, var_obj in self.agent_to_var_obj_map.items():
             # Obtener pesos individuales del agente desde config
-            var_obj_weights = lineal_params[var_obj]
-            agent_weights = var_obj_weights[agent_name]
-            
-            # Obtener features L_* del var_obj
-            var_metrics = reward_component[var_obj] if var_obj in reward_component else {}
+            if var_obj not in params or agent_name not in params[var_obj]:
+                assign_dict[agent_name] = controller_rewards.get(var_obj)
+                continue
+                
+            agent_weights = params[var_obj][agent_name]
+            var_metrics = reward_component.get(var_obj, {})
             
             if not var_metrics:
-                # Fallback a recompensa del controlador
-                assign_dict[agent_name] = controller_rewards[var_obj] if var_obj in controller_rewards else 0.0
+                assign_dict[agent_name] = controller_rewards.get(var_obj)
                 continue
             
-            # Calcular lagrangiana ponderada individual
-            agent_lagrangian = 0.0
-            for feature_name, weight_key in feature_to_weight_key.items():
-                if feature_name in var_metrics and weight_key in agent_weights:
-                    agent_lagrangian += agent_weights[weight_key] * var_metrics[feature_name]
-            
-            # Recompensa = -lagrangiana
-            assign_dict[agent_name] = -agent_lagrangian
+            if method == 'weighted_exponential':
+                import math
+                agent_reward = 0.0
+                
+                for feature_name, weight_key in feature_to_weight_key.items():
+                    if feature_name in var_metrics and weight_key in agent_weights:
+                        value = var_metrics[feature_name]
+                        
+                        # Obtener config global del principal_reward_impl para 'scaled' y 'setpoint'
+                        scaled = 1.0
+                        setpoint = 0.0
+                        if hasattr(self.principal_reward_impl, 'weights') and feature_name in self.principal_reward_impl.weights:
+                            global_feat_cfg = self.principal_reward_impl.weights[feature_name]
+                            if isinstance(global_feat_cfg, dict):
+                                scaled = global_feat_cfg.get('scaled', 1.0)
+                                setpoint = global_feat_cfg.get('setpoint', 0.0)
+                        
+                        weight = agent_weights[weight_key]
+                        exp_term = math.exp(-scaled * (value - setpoint) ** 2)
+                        agent_reward -= weight * (1 - exp_term)
+                        
+                assign_dict[agent_name] = agent_reward
+                
+            else:
+                # Default a lineal_combination
+                agent_lagrangian = 0.0
+                for feature_name, weight_key in feature_to_weight_key.items():
+                    if feature_name in var_metrics and weight_key in agent_weights:
+                        agent_lagrangian += agent_weights[weight_key] * var_metrics[feature_name]
+                
+                assign_dict[agent_name] = -agent_lagrangian
         
         return assign_dict
 

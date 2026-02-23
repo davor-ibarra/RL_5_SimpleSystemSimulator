@@ -26,7 +26,7 @@ episode_data:
     # ---- global controller (step-level) ----
     u_total: []
     u_total_raw: []
-    u_total_saturated: []
+    #u_total_saturated: []
     is_saturated_global: []
     #saturation_error_global: []
     #prev_u_total: []
@@ -73,8 +73,8 @@ episode_data:
     interval_t_start_sec: []
     interval_n_steps: []
 
-    #terminated: []
-    #termination_reason: []
+    # --- metrics processing ---
+    
 
     # ---- metrics / reward components (interval-level) ----
     # per controller
@@ -87,8 +87,21 @@ episode_data:
     #L_delta_e_pendulum_angle: []
     #L_delta_e_cart_position: []
 
+    # intermediate aggregated variables (auditing)
+    error_pendulum_angle_mean_squared: []
+    error_cart_position_mean_squared: []
+    derivative_error_pendulum_angle_mean_squared: []
+    derivative_error_cart_position_mean_squared: []
+    delta_u_eff_pendulum_angle_mean_squared: []
+    delta_u_eff_cart_position_mean_squared: []
+    #integral_error_pendulum_angle_mean: []
+    #integral_error_cart_position_mean: []
+    #u_eff_pendulum_angle_mean: []
+    #u_eff_cart_position_mean: []
+
     # global vars (optional)
     #L_u_total: []
+    #u_total_mean: []
 
     # metrics params (optional)
     # metrics_param_<controller_name>_<key>: []
@@ -144,10 +157,10 @@ episode_data:
     #extra_penalty_cart_position: []
     #extra_bonus_goal_pendulum_angle: []
     #extra_bonus_goal_cart_position: []
-    #extra_bonus_band_pendulum_angle: []
+    extra_bonus_band_pendulum_angle: []
     extra_bonus_band_cart_position: []
-    #extra_conditional_dynamic_penalty_pendulum_angle: []
-    #extra_conditional_dynamic_penalty_cart_position: []
+    extra_conditional_dynamic_penalty_pendulum_angle: []
+    extra_conditional_dynamic_penalty_cart_position: []
     #extra_conditional_dynamic_incentive_pendulum_angle: []
     #extra_conditional_dynamic_incentive_cart_position: []
     #extra_total_pendulum_angle: []

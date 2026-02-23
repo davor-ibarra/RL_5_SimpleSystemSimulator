@@ -138,10 +138,16 @@ class LagrangeRewardCalculator:
         # Procesar global_vars si existe y tiene features con pesos
         if 'global_vars' in reward_component:
             global_metrics = reward_component['global_vars']
+            global_lagrangian = 0.0
+            
             for feature_name, weight in self.weights.items():
                 if feature_name in global_metrics:
                     value = global_metrics[feature_name]
                     aggregated_L[feature_name] += value
+                    global_lagrangian += weight * value
+            
+            for var_obj in controller_rewards:
+                controller_rewards[var_obj] -= global_lagrangian
         
         # Calcular lagrangiana total ponderada
         lagrangian_total = sum(
@@ -211,9 +217,22 @@ class LagrangeRewardCalculator:
         # Procesar global_vars si existe
         if 'global_vars' in reward_component:
             global_metrics = reward_component['global_vars']
+            global_lagrangian = 0.0
+            
             for feature_name, feature_config in self.weights.items():
                 if feature_name in global_metrics:
-                    aggregated_L[feature_name] += global_metrics[feature_name]
+                    value = global_metrics[feature_name]
+                    aggregated_L[feature_name] += value
+                    
+                    weight = feature_config['weight']
+                    scaled = feature_config['scaled']
+                    setpoint = feature_config['setpoint']
+                    
+                    exp_term = math.exp(-scaled * (value - setpoint) ** 2)
+                    global_lagrangian += weight * (1 - exp_term)
+            
+            for var_obj in controller_rewards:
+                controller_rewards[var_obj] -= global_lagrangian
         
         # Recompensa total (con signo negativo para consistencia)
         principal_reward = 0.0

@@ -6,7 +6,7 @@ Implementar un PID directo por var_obj.
 Calcular y exponer sus variables internas (error, derivada, integral, acción, delta acción).
 Aceptar correcciones anti-windup desde la lógica global de ControllerBase.
 """
-
+import numpy as np
 
 class PIDController:
     """
@@ -113,6 +113,9 @@ class PIDController:
         self.control_action = 0.0
         self.prev_control_action = 0.0
         self.delta_control_action = 0.0
+        self.u_eff = 0.0
+        self.prev_u_eff = 0.0
+        self.delta_u_eff = 0.0
         self.is_saturated = False
         self.saturation_proportion = 0.0
         self.first_step = True
@@ -129,6 +132,9 @@ class PIDController:
         Returns:
             float: Acción de control
         """
+        # Actualizar error previo para próxima iteración
+        self.prev_error = self.error
+        
         # Obtener valor actual de la variable objetivo (normalizado)
         current_value = dynamic_state_dict[self.var_obj]
         
@@ -140,9 +146,14 @@ class PIDController:
             self.derivative_error = (self.error - self.prev_error) / dt_sec
         else:
             self.derivative_error = 0.0
+            self.first_step = False
         
-        # Calcular integral del error (acumulación)
-        self.integral_error += self.error * dt_sec
+        # Calcular integral del error (acumulación) SOLO si no estamos saturados empeorando el caso
+        if self.antiwindup_enabled and self.antiwindup_method == 'conditional':
+            if not (self.is_saturated and np.sign(self.error) == np.sign(self.control_action)):
+                self.integral_error += self.error * dt_sec
+        else:
+            self.integral_error += self.error * dt_sec
         
         # Calcular acción de control PID (sin saturar)
         self.prev_control_action = self.control_action
@@ -154,9 +165,6 @@ class PIDController:
         
         # Calcular delta de acción de control
         self.delta_control_action = self.control_action - self.prev_control_action
-        
-        # Actualizar error previo para próxima iteración
-        self.prev_error = self.error
         
         return self.control_action
     
@@ -171,36 +179,11 @@ class PIDController:
             float: Error
         """
         if self.error_is_setpoint_minus_pv:
-            return current_value - self.setpoint_normalized
-        else:
             return self.setpoint_normalized - current_value
+        else:
+            return current_value - self.setpoint_normalized
 
-    def _apply_antiwindup_correction(self, correction, dt_sec):
-        """
-        Acepta correcciones anti-windup globales desde ControllerBase.
-        Se aplica cuando hay saturación global y se reparte proporcionalmente.
-        
-        Args:
-            correction (float): Corrección anti-windup (error de saturación ponderado)
-            dt_sec (float): Paso de tiempo (para métodos back_calculation futuros)
-        """
-        if self.antiwindup_method == 'conditional':
-            self._apply_conditional_antiwindup_correction(correction)
-    
-    def _apply_conditional_antiwindup_correction(self, e_sat):
-        """
-        Aplica corrección antiwindup al integrador.
-        La corrección viene en unidades de [control_action]; se divide por ki
-        para convertir a unidades de [error × tiempo].
-        
-        Args:
-            e_sat (float): Error de saturación (u_raw - u_sat)
-        """
-        if self.ki > 0:
-            integral_correction = e_sat / self.ki
-            self.integral_error -= integral_correction
-    
-    
+
     # --- Public methods ---
 
     def update_gains(self, kp, ki, kd):
@@ -225,28 +208,21 @@ class PIDController:
         """
         return {'kp': self.kp, 'ki': self.ki, 'kd': self.kd}
 
-    def return_state_to_controller(self, u_total_saturated, u_total_raw, is_saturated_global, dt_sec):
+    def return_state_to_controller(self, u_eff, is_saturated_global, dt_sec):
         """
-        Retorna el estado del controlador base a cada controlador.
+        Recibe u_eff calculado por controller_base y actualiza estado interno.
+        
+        Args:
+            u_eff (float): Acción de control efectiva (ya calculada por controller_base)
+            is_saturated_global (bool): Si el actuador global está saturado
+            dt_sec (float): Paso de tiempo
         """
         self.is_saturated = is_saturated_global
         
-        # Calcular acción de control efectiva
-        if u_total_raw != 0:
-            scaling_factor = u_total_saturated / u_total_raw
-        else:
-            scaling_factor = 1.0
-            
-        self.u_eff = scaling_factor * self.control_action
-        self.delta_u_eff = self.u_eff - self.prev_u_eff
+        # Actualizar u_eff y delta
         self.prev_u_eff = self.u_eff
-        
-        # Calcular error de saturación
-        e_sat = self.u_eff - self.control_action
-
-        # Aplicar corrección antiwindup
-        if self.is_saturated and self.antiwindup_enabled:
-            self._apply_antiwindup_correction(e_sat, dt_sec)
+        self.u_eff = u_eff
+        self.delta_u_eff = self.u_eff - self.prev_u_eff
     
     def get_controller_record(self):
         """

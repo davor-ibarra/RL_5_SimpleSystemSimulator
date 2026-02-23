@@ -93,7 +93,7 @@ class SimulationManager:
             self._run_episode(episode_id)
             print(f"\n[SIMULATION_MANAGER] --- T_max = {self.current_time_sec}  |  Total Reward = {self.total_reward}  |  Termination Reason = {self.termination_reason} ---")
             current_gains = self._get_gains_for_agent()
-            formatted_gains = "  |  ".join([f"{k} = {round(v, 1):.1f}" for k, v in current_gains.items()])
+            formatted_gains = "  |  ".join([f"{k} = {round(v, 2)}" for k, v in current_gains.items()])
             print(f"\n[SIMULATION_MANAGER] --- {formatted_gains} ---")
         
         self.metric_collector.finalize_run()
@@ -124,6 +124,13 @@ class SimulationManager:
         
         # 5. Inicializar buffers del episodio en el colector (captura t=0)
         self.metric_collector.on_episode_start(episode_id)
+        
+        # 5.1 Registrar paso explícito t=0 para que las ganancias iniciales queden impecablemente registradas
+        # antes de ser mutadas por la primera acción del agente.
+        step_flat_data_t0 = {'t_sec': 0.0}
+        step_flat_data_t0.update(self.dynamic_system_base.get_records())
+        step_flat_data_t0.update(self.controller_base.get_records())
+        self.metric_collector.on_step(step_flat_data_t0)
         
         # 6. Loop de intervalos hasta término por tiempo o condición del sistema
         terminated = False
@@ -248,9 +255,14 @@ class SimulationManager:
         
         # 5. Ejecutar aprendizaje del agente
         current_gains_for_agent = self._get_gains_for_agent()
-        next_agent_state = self.agent_base.build_agent_state(current_state_norm_dict, current_gains_for_agent)
+        current_dynamic_state_raw = self.dynamic_system_base.get_dynamic_system_state('raw')
+        next_agent_state = self.agent_base.build_agent_state(current_dynamic_state_raw, current_gains_for_agent)
+        
+        # Distinction: Time limit truncation vs true boundary termination
+        terminated_boundary = terminated and self.termination_reason != "time_limit"
+        
         learn_info = self.agent_base.learn(
-            prev_agent_state, next_agent_state, actions_dict, reward_for_learning, terminated
+            prev_agent_state, next_agent_state, actions_dict, reward_for_learning, terminated_boundary
         )
         
         # 6. Armar el interval_result con metadata completa
@@ -343,16 +355,28 @@ class SimulationManager:
         """
         agents_config = self.config_main['agent_base']['agent_config']['agents']
         
-        # Agrupar nuevas ganancias por controlador usando mapping precomputado
+        # Obtener el mapping de acciones desde la configuración
+        actions_space = self.config_main['agent_base']['agent_config']['actions']['actions_space']
+
+        # Inicializar ganancias por controlador con sus valores actuales reales (evita errores de llaves faltantes)
         controller_gains = {}
-        for agent_name, (controller_name, gain_type) in self.agent_to_controller_map.items():
-            if controller_name not in controller_gains:
-                controller_gains[controller_name] = {}
+        for controller_name in self.controller_names:
+            controller_gains[controller_name] = self.controllers[controller_name].get_current_controller_gains()
             
+        for agent_name, (controller_name, gain_type) in self.agent_to_controller_map.items():
             current_value = actions_dict['vars_values'][agent_name]
             action_decision = actions_dict['vars_decision'][f'action_{agent_name}']
             delta_gain = actions_dict['vars_delta'][f'delta_gain_{agent_name}']
-            new_value = current_value + (action_decision - 1) * delta_gain
+            
+            # Traducir el índice de acción a su significado explícito ('decrease', 'maintain', 'increase')
+            action_str = actions_space[action_decision]
+            
+            if action_str == 'decrease':
+                new_value = current_value - delta_gain
+            elif action_str == 'increase':
+                new_value = current_value + delta_gain
+            else: # 'maintain' o cualquier otro por defecto
+                new_value = current_value
             
             # Clipear al rango [min, max] definido en config del agente
             agent_cfg = agents_config[agent_name]
@@ -374,6 +398,7 @@ class SimulationManager:
         initial_actions = {
             'vars_values': {},
             'vars_decision': {},
+            'vars_delta': {}
         }
         
         # Usar mapping precomputado para obtener valores iniciales
@@ -382,6 +407,7 @@ class SimulationManager:
             gains = controller.get_current_controller_gains()
             initial_actions['vars_values'][agent_name] = gains[gain_type]
             initial_actions['vars_decision'][f'action_{agent_name}'] = 1
+            initial_actions['vars_delta'][f'delta_gain_{agent_name}'] = self.agent_base.agent_gain_steps[agent_name]
         
         return initial_actions
     

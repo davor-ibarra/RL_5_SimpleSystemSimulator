@@ -48,4 +48,8 @@ data_summary:
     reward_kp_cart_position,
     reward_ki_cart_position,
     reward_kd_cart_position,
+    extra_bonus_band_pendulum_angle,
+    extra_bonus_band_cart_position,
+    extra_conditional_dynamic_penalty_pendulum_angle,
+    extra_conditional_dynamic_penalty_cart_position
   ]

@@ -47,18 +47,20 @@ class PIDQLearningAgent:
         self.action_space = self.config_agent['agent_config']['actions']['actions_space']
         self.num_actions = len(self.action_space)
         
-        # Construir espacio de estados
-        self._build_state_space()
-        
-        # Per-agent delta_gain desde config actions_values (despues del espacio de estados para reutilizar agent_names)
+        # Per-agent delta_gain desde config (ANTES de _build_state_space que lo necesita)
         actions_values_config = self.config_agent['agent_config']['actions']['actions_values']
         self.actions_values_mode = actions_values_config['mode']
         self.agent_gain_steps = {}
-        for agent_name in self.agent_names:
-            if self.actions_values_mode == 'universal':
-                self.agent_gain_steps[agent_name] = actions_values_config['universal_params']['delta_gain']
-            elif self.actions_values_mode == 'per_agent':
-                self.agent_gain_steps[agent_name] = actions_values_config['per_agent_params']['delta_gain'][agent_name]
+        agents_config_temp = self.config_agent['agent_config']['agents']
+        for var_name, var_cfg in agents_config_temp.items():
+            if var_cfg['enabled_agent']:
+                if self.actions_values_mode == 'universal':
+                    self.agent_gain_steps[var_name] = actions_values_config['universal_params']['delta_gain']
+                elif self.actions_values_mode == 'per_agent':
+                    self.agent_gain_steps[var_name] = actions_values_config['per_agent_params']['delta_gain'][var_name]
+        
+        # Construir espacio de estados (usa agent_gain_steps para derivar bins)
+        self._build_state_space()
         
         # Valor inicial de Q-table
         self.q_init_value = 0.0
@@ -95,11 +97,17 @@ class PIDQLearningAgent:
             self.var_to_idx[var_name] = idx
             self.var_mins[var_name] = var_cfg['min']
             self.var_maxs[var_name] = var_cfg['max']
-            self.var_bins[var_name] = var_cfg['bins']
             
-            # step para discretización lineal
-            n_bins = var_cfg['bins']
-            step = (var_cfg['max'] - var_cfg['min']) / (n_bins - 1) if n_bins > 1 else 0.0
+            # Derivar bins y step: desde delta_gain para agentes, desde config para el resto
+            if var_name in self.agent_gain_steps:
+                delta_gain = self.agent_gain_steps[var_name]
+                n_bins = int(round((var_cfg['max'] - var_cfg['min']) / delta_gain)) + 1
+                step = delta_gain
+            else:
+                n_bins = var_cfg['bins']
+                step = (var_cfg['max'] - var_cfg['min']) / (n_bins - 1) if n_bins > 1 else 0.0
+            
+            self.var_bins[var_name] = n_bins
             self.var_steps[var_name] = step
             idx += 1
         

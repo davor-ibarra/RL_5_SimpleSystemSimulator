@@ -155,11 +155,15 @@ class MetricProcessing:
         records = {}
         
         # Aplanar reward_component: {var_obj: {L_e: val, ...}} → {L_e_<var_obj>: val, ...}
+        # Para otras variables con nombres explícitos, se mantienen completas.
         if hasattr(self, '_last_processed_metrics') and self._last_processed_metrics:
             reward_component = self._last_processed_metrics['reward_component']
             for var_obj, var_metrics in reward_component.items():
                 for feature_key, value in var_metrics.items():
-                    records[f'{feature_key}_{var_obj}'] = value
+                    if feature_key.startswith('L_'):
+                        records[f'{feature_key}_{var_obj}'] = value
+                    else:
+                        records[feature_key] = value
         
         return records
     
@@ -217,6 +221,8 @@ class MetricProcessing:
                 # Agregar según método
                 aggregated = self._aggregate_with_method(values, method)
             
+            features[f'{signal_key}_{method}'] = aggregated
+            
             # Normalizar solo si está habilitado
             if normalization_enabled:
                 normalized = self._normalize_value(aggregated, value_range, output_limits, method)
@@ -255,6 +261,8 @@ class MetricProcessing:
             value_range = var_config['range']
             
             aggregated = self._aggregate_with_method(values, method)
+            
+            global_metrics[f'{var_name}_{method}'] = aggregated
             
             if normalization_enabled:
                 normalized = self._normalize_value(aggregated, value_range, output_limits, method)

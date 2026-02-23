@@ -108,9 +108,17 @@ class ControllerBase:
     def _return_state_to_controllers(self):
         """
         Retorna el estado del controlador base a cada controlador.
+        Calcula u_eff_i centralmente (scaling proporcional) y lo pasa directamente.
         """
+        # Calcular scaling_factor una sola vez (nivel global)
+        if self.u_total_raw != 0:
+            scaling_factor = self.u_total_saturated / self.u_total_raw
+        else:
+            scaling_factor = 1.0
+        
         for controller_name, controller in self.controllers.items():
-            controller.return_state_to_controller(self.u_total_saturated, self.u_total_raw, self.is_saturated_global, self.dt_sec)
+            u_eff_i = scaling_factor * controller.control_action
+            controller.return_state_to_controller(u_eff_i, self.is_saturated_global, self.dt_sec)
     
     def get_records(self):
         """

@@ -530,24 +530,24 @@ plots:
       log_scale: false # Use logarithmic color scale?
       grid_on: false
       filter_termination_reason: ['stabilization_success']
-  # --- Example Heatmap (Time vs u_total_saturated) ---
+  # --- Example Heatmap (Time vs u_total) ---
   - type: heatmap
     enabled: true
-    name: "heatmap_t_vs_ut_sat"
+    name: "heatmap_t_vs_ut"
     source: detailed # Use data from the list of all episode details
     x_variable: t_sec
-    y_variable: u_total_saturated
+    y_variable: u_total
     value_variable: t_sec # Variable con la que se calcula el aggregation
-    output_filename: fig12b_heatmap_time_vs_u_total_saturated.png
+    output_filename: fig12b_heatmap_time_vs_u_total.png
     config:
       aggregation: count # mean, max, min, etc...
-      title: Heatmap - Time vs Cart control action saturated
+      title: Heatmap - Time vs Cart control action total
       title_fontsize: 30
       figsize_w: 16
       figsize_h: 12
       xlabel: Time [s]
       xlabel_fontsize: 28
-      ylabel: Cart control action saturated (-)
+      ylabel: Cart control action total (-)
       ylabel_fontsize: 28
       xmin: 0
       xmax: 5
@@ -566,24 +566,24 @@ plots:
       log_scale: false # Use logarithmic color scale?
       grid_on: false
       filter_termination_reason: null
-  # --- Example Heatmap (Time vs u_total_saturated) stabilization_success ---
+  # --- Example Heatmap (Time vs u_total) stabilization_success ---
   - type: heatmap
     enabled: true
-    name: "heatmap_t_vs_ut_sat_stab"
+    name: "heatmap_t_vs_ut_stab"
     source: detailed # Use data from the list of all episode details
     x_variable: t_sec
-    y_variable: u_total_saturated
+    y_variable: u_total
     value_variable: t_sec # Variable con la que se calcula el aggregation
-    output_filename: fig12a_heatmap_time_vs_u_total_saturated(stabilization_success).png
+    output_filename: fig12a_heatmap_time_vs_u_total(stabilization_success).png
     config:
       aggregation: count # mean, max, min, etc...
-      title: Heatmap - Time vs Cart control action saturated (stabilization_success)
+      title: Heatmap - Time vs Cart control action total (stabilization_success)
       title_fontsize: 30
       figsize_w: 16
       figsize_h: 12
       xlabel: Time [s]
       xlabel_fontsize: 28
-      ylabel: Cart control action saturated (-)
+      ylabel: Cart control action total (-)
       ylabel_fontsize: 28
       xmin: 0
       xmax: 5
@@ -604,7 +604,7 @@ plots:
       filter_termination_reason: ['stabilization_success']
   # --- Example Heatmap (Time vs cart_force) ---
   - type: heatmap
-    enabled: true
+    enabled: false
     name: "heatmap_time_vs_cart_force"
     source: detailed # Use data from the list of all episode details
     x_variable: t_sec
