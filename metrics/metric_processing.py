@@ -56,6 +56,12 @@ class MetricProcessing:
         norm_params = metric_processing_config['normalization']['params']
         self.global_vars_config = norm_params['global_vars'] if 'global_vars' in norm_params else {}
         
+        # ---------------------------------------------------------
+        # Pre-compilar trabajos estáticos para evitar chequeos continuos
+        # ---------------------------------------------------------
+        self.feature_jobs = self._compile_feature_jobs()
+        self.global_jobs = self._compile_global_jobs()
+        
         # Estado interno: resultado del último process_interval_metrics
         self._last_processed_metrics = None
     
@@ -92,6 +98,60 @@ class MetricProcessing:
             'params': norm_config['params']
         }
     
+    def _compile_feature_jobs(self):
+        """
+        Pre-compila la lista de operaciones de agregación y normalización por var_obj 
+        para no re-evaluar los diccionarios de configuración en vivo.
+        """
+        jobs = {}
+        signal_base_map = {
+            'e': 'error',
+            'edot': 'derivative_error',
+            'I': 'integral_error',
+            'u': 'u_eff',
+            'delta_u': 'delta_u_eff'
+        }
+        norm_params = self.normalization_config['params']
+        
+        for var_obj in self.var_obj_to_controller:
+            jobs[var_obj] = []
+            var_norm = norm_params.get(var_obj, {})
+            
+            for f_key, sig_prefix in signal_base_map.items():
+                sig_key = f'{sig_prefix}_{var_obj}'
+                cfg = var_norm.get(f_key, {'method': 'mean_squared', 'range': [-1.0, 1.0]})
+                
+                method = cfg['method']
+                v_range = cfg['range']
+                
+                # Tupla super rápida: (f_key, sig_key, dest_agg, dest_norm, method, v_range)
+                jobs[var_obj].append((
+                    f_key, 
+                    sig_key, 
+                    f'{sig_key}_{method}', 
+                    f'L_{f_key}_{var_obj}', 
+                    method, 
+                    v_range
+                ))
+        return jobs
+        
+    def _compile_global_jobs(self):
+        """
+        Pre-compila la lista de operaciones de agregación para variables globales.
+        """
+        jobs = []
+        for var_name, var_config in self.global_vars_config.items():
+            method = var_config['method']
+            v_range = var_config['range']
+            jobs.append((
+                var_name,
+                f'{var_name}_{method}',
+                f'L_{var_name}',
+                method,
+                v_range
+            ))
+        return jobs
+        
     def reset_episode(self):
         """
         Resetea el procesador al inicio de un episodio.
@@ -108,24 +168,33 @@ class MetricProcessing:
             
         Returns:
             dict: processed_metrics_dict con estructura de 3 secciones
-                - reward_component: {var_obj: {L_e, L_edot, ...}}
+                - reward_component: {L_e_<var_obj>: val, ...} (Aplanado)
                 - extra_reward_component: {error_<var_obj>: [serie], ...}
                 - metrics_info: {}
         """
-        # 1. Reward component: métricas agregadas y normalizadas per-var_obj
+        # Centralizar transposición a formato columnar O(N)
+        columnar_data = {}
+        if step_records:
+            keys = step_records[0].keys()
+            for key in keys:
+                columnar_data[key] = [
+                    record[key] for record in step_records
+                    if isinstance(record[key], (int, float)) and np.isfinite(record[key])
+                ]
+        
+        # 1. Reward component: métricas agregadas y normalizadas en un solo nivel
         reward_component = {}
         for var_obj in self.var_obj_to_controller:
-            var_metrics = self._process_var_obj_metrics(step_records, var_obj)
-            reward_component[var_obj] = var_metrics
+            var_metrics = self._process_var_obj_metrics(columnar_data, var_obj)
+            reward_component.update(var_metrics)
         
-        # Global vars (solo si hay config)
-        if self.global_vars_config:
-            global_metrics = self._process_global_vars(step_records, self.global_vars_config)
-            if global_metrics:
-                reward_component['global_vars'] = global_metrics
+        # Global vars (solo si hay config en init)
+        if self.global_jobs:
+            global_metrics = self._process_global_vars(columnar_data)
+            reward_component.update(global_metrics)
         
-        # 2. Extra reward component: series crudas planas per-var_obj
-        extra_reward_component = self._extract_raw_series_for_extras(step_records)
+        # 2. Extra reward component: series crudas extraídas directo de la matriz columnar
+        extra_reward_component = self._extract_raw_series_for_extras(columnar_data)
         
         # 3. Metrics info (placeholder para métricas futuras)
         metrics_info = {}
@@ -145,178 +214,103 @@ class MetricProcessing:
     def get_records(self):
         """
         Retorna dict plano con las métricas procesadas del intervalo.
-        Aplana reward_component a llaves canónicas: L_<feature>_<var_obj>.
-        
-        Debe llamarse DESPUÉS de process_interval_metrics().
+        Al estar previamente aplanadas, solo requiere un update y se exponen directo.
         
         Returns:
             dict: Registro plano interval-level de métricas procesadas
         """
         records = {}
-        
-        # Aplanar reward_component: {var_obj: {L_e: val, ...}} → {L_e_<var_obj>: val, ...}
-        # Para otras variables con nombres explícitos, se mantienen completas.
-        if hasattr(self, '_last_processed_metrics') and self._last_processed_metrics:
-            reward_component = self._last_processed_metrics['reward_component']
-            for var_obj, var_metrics in reward_component.items():
-                for feature_key, value in var_metrics.items():
-                    if feature_key.startswith('L_'):
-                        records[f'{feature_key}_{var_obj}'] = value
-                    else:
-                        records[feature_key] = value
-        
+        if self._last_processed_metrics:
+            records.update(self._last_processed_metrics['reward_component'])
+            
         return records
     
-    def _process_var_obj_metrics(self, step_records, var_obj):
+    def _process_var_obj_metrics(self, columnar_data, var_obj):
         """
-        Procesa métricas para un var_obj específico.
-        Mapea señales del PID a features (L_e, L_edot, L_I, L_u, L_delta_u).
-        Aplica normalización solo si enabled=true en config.
-        
-        Args:
-            step_records (list[dict]): Lista de dicts planos por step
-            var_obj (str): Variable objetivo
-            
-        Returns:
-            dict: Features {L_e, L_edot, L_I, L_u, L_delta_u}
+        Procesa métricas para un var_obj específico desde la data columnar.
+        Usa jobs pre-compilados para O(1).
         """
-        if not step_records:
-            return {}
-        
-        # Mapeo de feature_key → signal_key (llaves canónicas del PID)
-        signal_mapping = {
-            'e': f'error_{var_obj}',
-            'edot': f'derivative_error_{var_obj}',
-            'I': f'integral_error_{var_obj}',
-            'u': f'u_eff_{var_obj}',
-            'delta_u': f'delta_u_eff_{var_obj}'
-        }
-        
         features = {}
         normalization_enabled = self.normalization_config['enabled']
-        norm_params = self.normalization_config['params']
         output_limits = self.normalization_config['output_limits']
         
-        # Config de normalización para este var_obj (puede no existir)
-        var_norm_params = norm_params[var_obj] if var_obj in norm_params else {}
+        # Extraer operaciones pre-compiladas estáticas
+        jobs = self.feature_jobs.get(var_obj, [])
         
-        for feature_key, signal_key in signal_mapping.items():
-            # Extraer valores de la serie
-            values = self._extract_signal_series(step_records, signal_key)
+        for (f_key, sig_key, dest_agg, dest_norm, method, v_range) in jobs:
+            values = columnar_data.get(sig_key, [])
             
-            # Obtener config de normalización para esta feature (puede no existir)
-            if feature_key in var_norm_params:
-                feature_norm_config = var_norm_params[feature_key]
-                method = feature_norm_config['method']
-                value_range = feature_norm_config['range']
-            else:
-                # Default si no hay config específica
-                method = 'mean_squared'
-                value_range = [-1.0, 1.0]
-
-            # Si no hay valores, usar default (0.0) para asegurar que la llave exista
             if not values:
                 aggregated = 0.0
             else:
-                # Agregar según método
                 aggregated = self._aggregate_with_method(values, method)
+                
+            features[dest_agg] = aggregated
             
-            features[f'{signal_key}_{method}'] = aggregated
-            
-            # Normalizar solo si está habilitado
             if normalization_enabled:
-                normalized = self._normalize_value(aggregated, value_range, output_limits, method)
-                features[f'L_{feature_key}'] = normalized
+                features[dest_norm] = self._normalize_value(aggregated, v_range, output_limits, method)
             else:
-                features[f'L_{feature_key}'] = aggregated
-        
+                features[dest_norm] = aggregated
+                
         return features
     
-    def _process_global_vars(self, step_records, global_vars_config):
+    def _process_global_vars(self, columnar_data):
         """
-        Procesa variables globales SOLO si están definidas en config.
-        
-        Args:
-            step_records (list[dict]): Lista de dicts planos por step
-            global_vars_config (dict): Config de variables globales
-            
-        Returns:
-            dict: Features globales
+        Procesa variables globales usando los jobs pre-compilados O(1).
         """
-        if not step_records:
-            return {}
-        
         global_metrics = {}
         normalization_enabled = self.normalization_config['enabled']
         output_limits = self.normalization_config['output_limits']
         
-        for var_name, var_config in global_vars_config.items():
-            # Extraer serie directamente por llave plana
-            values = self._extract_signal_series(step_records, var_name)
+        for (sig_key, dest_agg, dest_norm, method, v_range) in self.global_jobs:
+            values = columnar_data.get(sig_key, [])
             
             if not values:
                 continue
-            
-            method = var_config['method']
-            value_range = var_config['range']
-            
+                
             aggregated = self._aggregate_with_method(values, method)
-            
-            global_metrics[f'{var_name}_{method}'] = aggregated
+            global_metrics[dest_agg] = aggregated
             
             if normalization_enabled:
-                normalized = self._normalize_value(aggregated, value_range, output_limits, method)
-                global_metrics[f'L_{var_name}'] = normalized
+                global_metrics[dest_norm] = self._normalize_value(aggregated, v_range, output_limits, method)
             else:
-                global_metrics[f'L_{var_name}'] = aggregated
-        
+                global_metrics[dest_norm] = aggregated
+                
         return global_metrics
     
-    def _extract_raw_series_for_extras(self, step_records):
+    def _extract_raw_series_for_extras(self, columnar_data):
         """
-        Extrae series crudas planas por var_obj para extra_reward_component.
-        Incluye la serie completa del intervalo para que bonus/penalty puedan
-        evaluar si la condición se cumplió durante el intervalo.
+        Extrae series crudas de la estructura columnar per-var_obj 
+        para la matriz de extra rewards.
         
         Args:
-            step_records (list[dict]): Lista de dicts planos por step
+            columnar_data (dict): Data transpuesta O(N).
             
         Returns:
-            dict: Crudos planos {error_<var_obj>: [lista], ...}
+            dict: Crudos planos {error_<var_obj>: [lista], ...}.
         """
         extras = {}
-        
+        if not columnar_data:
+            return extras
+            
         for var_obj in self.var_obj_to_controller:
             # Extraer error crudo (señal principal para bonus/penalty)
             error_key = f'error_{var_obj}'
-            error_series = self._extract_signal_series(step_records, error_key)
-            extras[error_key] = error_series
+            extras[error_key] = columnar_data[error_key]
             
-            # Extraer control_action crudo (para penalty de esfuerzo)
+            # Extraer u_eff_ crudo (para penalty de esfuerzo)
             action_key = f'u_eff_{var_obj}'
-            action_series = self._extract_signal_series(step_records, action_key)
-            extras[action_key] = action_series
-        
-        return extras
-    
-    def _extract_signal_series(self, step_records, signal_name):
-        """
-        Extrae una serie de valores de una señal por llave plana.
-        
-        Args:
-            step_records (list[dict]): Lista de dicts planos por step
-            signal_name (str): Llave canónica de la señal (e.g. error_pendulum_angle)
+            extras[action_key] = columnar_data[action_key]
             
-        Returns:
-            list: Lista de valores (solo numéricos finitos)
-        """
-        values = []
-        for record in step_records:
-            if signal_name in record:
-                val = record[signal_name]
-                if isinstance(val, (int, float)) and np.isfinite(val):
-                    values.append(val)
-        return values
+            # Extraer control_action_ crudo (acción teórica de control)
+            ctrl_key = f'control_action_{var_obj}'
+            extras[ctrl_key] = columnar_data[ctrl_key]
+            
+            # Extraer delta de accion de control (para penalties por variabilidad)
+            delta_ctrl_key = f'delta_control_action_{var_obj}'
+            extras[delta_ctrl_key] = columnar_data[delta_ctrl_key]
+            
+        return extras
     
     def _aggregate_with_method(self, values, method):
         """

@@ -8,6 +8,7 @@ r = -(α·L_e + β·L_edot + γ·L_I + η·L_delta_u)
 Esta clase es un reward_impl puro, sin responsabilidad de asignación a agentes.
 """
 
+import math
 
 class LagrangeRewardCalculator:
     """
@@ -22,20 +23,22 @@ class LagrangeRewardCalculator:
     Retorna: (principal_reward, breakdown, controller_rewards)
     """
     
-    def __init__(self, config):
+    def __init__(self, config_main):
         """
         Inicializa el calculador lagrangiano.
         
         Args:
-            config (dict): Configuración de principal_reward con:
-                - method: lineal_combination | weighted_exponential
-                - lineal_combination_params: {features: {L_e: {alpha}, ...}}
-                - weighted_exponential_params: {...}
+            config_main (dict): Configuración global para extraer todas las dependencias directo.
         """
-        self.config = config
-        self.config_lineal_combination = config['lineal_combination_params']
-        self.config_weighted_exponential = config['weighted_exponential_params']
-        self.method = config['method']
+        self.config_main = config_main
+        self.config = config_main['reward_base']['reward_calculation']['principal_reward']
+        self.method = self.config['method']
+        
+        # Load params depending on method check
+        if self.method == 'lineal_combination':
+            self.config_lineal_combination = self.config['lineal_combination_params']
+        elif self.method == 'weighted_exponential':
+            self.config_weighted_exponential = self.config['weighted_exponential_params']
         
         # Extraer pesos según método
         if self.method == 'lineal_combination':
@@ -44,9 +47,69 @@ class LagrangeRewardCalculator:
             self.weights = self._extract_exponential_weights()
         else:
             self.weights = {}
+            
+        # Extraer var_objs desde controllers para evitar loop condicional posterior
+        self.var_objs = self._extract_var_objs()
+        
+        # Mapping para agent individual weights (e.g. L_e -> w_e, L_delta_u -> w_s)
+        self.feature_to_agent_weight_key = {
+            'L_e': 'w_e',
+            'L_edot': 'w_edot',
+            'L_I': 'w_I',
+            'L_u': 'w_u',
+            'L_delta_u': 'w_s'
+        }
+        
+        # Precompilar trabajos matemáticos
+        self._compile_jobs()
+        self._compile_agent_jobs()
         
         # Último reward_params_record (para auditoría)
         self.last_reward_params_record = {}
+        
+    def _compile_jobs(self):
+        """
+        Pre-construye las listas de ejecución matemática (tuplas estáticas) para evitar bucles de string e if-checks.
+        """
+        self.var_jobs = {}
+        for var_obj in self.var_objs:
+            self.var_jobs[var_obj] = []
+            for feature_name, cfg in self.weights.items():
+                flat_key = f"{feature_name}_{var_obj}"
+                if isinstance(cfg, dict):
+                    w, s, sp = cfg.get('weight', 0.0), cfg.get('scaled', 1.0), cfg.get('setpoint', 0.0)
+                else:
+                    w, s, sp = cfg, 1.0, 0.0
+                self.var_jobs[var_obj].append((flat_key, feature_name, w, s, sp))
+                
+        self.global_jobs = []
+        for feature_name, cfg in self.weights.items():
+            if isinstance(cfg, dict):
+                w, s, sp = cfg.get('weight', 0.0), cfg.get('scaled', 1.0), cfg.get('setpoint', 0.0)
+            else:
+                w, s, sp = cfg, 1.0, 0.0
+            self.global_jobs.append((feature_name, w, s, sp))
+            
+    def _compile_agent_jobs(self):
+        """
+        Pre-construye las llaves referenciales del framework para `compute_agent_individual_reward`.
+        """
+        self.agent_feature_jobs = []
+        for feature_name, weight_key in self.feature_to_agent_weight_key.items():
+            cfg = self.weights.get(feature_name, {})
+            if isinstance(cfg, dict):
+                s, sp = cfg.get('scaled', 1.0), cfg.get('setpoint', 0.0)
+            else:
+                s, sp = 1.0, 0.0
+            self.agent_feature_jobs.append((feature_name, weight_key, s, sp))
+        
+    def _extract_var_objs(self):
+        """ Extrae las variables objetivo directamente de la configuración de controladores. """
+        var_objs = []
+        controllers_config = self.config_main['controller_base']['controllers']
+        for ctrl_cfg in controllers_config.values():
+            var_objs.append(ctrl_cfg['params']['name_objective_var'])
+        return var_objs
     
     def _extract_lineal_weights(self):
         """
@@ -81,12 +144,12 @@ class LagrangeRewardCalculator:
         """
         self.last_reward_params_record = {}
     
-    def compute_reward(self, reward_component):
+    def compute_reward(self, flat_reward_component):
         """
-        Calcula la recompensa lagrangiana desde reward_component.
+        Calcula la recompensa lagrangiana desde el componente aplanado de métricas.
         
         Args:
-            reward_component (dict): Estructura {var_obj: {L_e, L_edot, ...}}
+            flat_reward_component (dict): Estructura {L_e_<var_obj>: val, ...}
             
         Returns:
             tuple: (principal_reward, reward_params_record, controller_rewards)
@@ -95,67 +158,46 @@ class LagrangeRewardCalculator:
                 - controller_rewards: dict (recompensas por controlador)
         """
         if self.method == 'lineal_combination':
-            return self._compute_lineal(reward_component)
+            return self._compute_lineal(flat_reward_component)
         elif self.method == 'weighted_exponential':
-            return self._compute_exponential(reward_component)
+            return self._compute_exponential(flat_reward_component)
         else:
             return 0.0, {}, {}
     
-    def _compute_lineal(self, reward_component):
+    def _compute_lineal(self, flat_reward_component):
         """
-        Calcula recompensa usando combinación lineal: r = -Σ(weight * L_feature)
-        
-        Args:
-            reward_component (dict): {var_obj: {L_e, L_edot, ...}}
-            
-        Returns:
-            tuple: (principal_reward, reward_params_record, controller_rewards)
+        Calcula recompensa usando combinación lineal iterando la lista compilada.
         """
-        # Agregar componentes L_* sobre todos los var_objs
         aggregated_L = {feature: 0.0 for feature in self.weights.keys()}
         controller_rewards = {}
-        n_controllers = 0
         
-        for var_obj, var_metrics in reward_component.items():
-            if var_obj == 'global_vars':
-                continue  # Procesar globales al final
-            
-            n_controllers += 1
+        for var_obj, jobs in self.var_jobs.items():
             lazo_lagrangian = 0.0
-            
-            for feature_name, weight in self.weights.items():
-                # Verificar que la feature existe en las métricas
-                if feature_name not in var_metrics:
-                    continue
-                
-                value = var_metrics[feature_name]
+            for flat_key, feature_name, w, _, _ in jobs:
+                # Acceso dict ultra-veloz O(1) vía llave precompilada
+                value = flat_reward_component[flat_key]
                 aggregated_L[feature_name] += value
-                lazo_lagrangian += weight * value
+                lazo_lagrangian += w * value
             
             # Recompensa del lazo = -lagrangiana
             controller_rewards[var_obj] = -lazo_lagrangian
         
-        # Procesar global_vars si existe y tiene features con pesos
-        if 'global_vars' in reward_component:
-            global_metrics = reward_component['global_vars']
-            global_lagrangian = 0.0
-            
-            for feature_name, weight in self.weights.items():
-                if feature_name in global_metrics:
-                    value = global_metrics[feature_name]
-                    aggregated_L[feature_name] += value
-                    global_lagrangian += weight * value
-            
+        global_lagrangian = 0.0
+        for feature_name, w, _, _ in self.global_jobs:
+            if feature_name in flat_reward_component:
+                value = flat_reward_component[feature_name]
+                aggregated_L[feature_name] += value
+                global_lagrangian += w * value
+        
+        if global_lagrangian != 0.0:
             for var_obj in controller_rewards:
                 controller_rewards[var_obj] -= global_lagrangian
         
-        # Calcular lagrangiana total ponderada
         lagrangian_total = sum(
             self.weights[feature] * value 
             for feature, value in aggregated_L.items()
         )
         
-        # Recompensa = -lagrangiana
         principal_reward = -lagrangian_total
         
         # Breakdown
@@ -170,83 +212,45 @@ class LagrangeRewardCalculator:
         
         return principal_reward, reward_params_record, controller_rewards
     
-    def _compute_exponential(self, reward_component):
+    def _compute_exponential(self, flat_reward_component):
         """
-        Calcula recompensa usando método exponencial ponderado.
-        r = -Σ weight * (1 - exp(-scaled * (value - setpoint)^2))
-        
-        Nota: Se aplica signo negativo para consistencia con método lineal.
-        
-        Args:
-            reward_component (dict): {var_obj: {L_e, L_edot, ...}}
-            
-        Returns:
-            tuple: (principal_reward, reward_params_record, controller_rewards)
+        Calcula recompensa usando método exponencial iterando las tuplas compiladas.
         """
-        import math
-        
-        # Agregar componentes sobre todos los var_objs
         aggregated_L = {feature: 0.0 for feature in self.weights.keys()}
         controller_rewards = {}
         
-        for var_obj, var_metrics in reward_component.items():
-            if var_obj == 'global_vars':
-                continue
-            
+        for var_obj, jobs in self.var_jobs.items():
             lazo_reward = 0.0
-            
-            for feature_name, feature_config in self.weights.items():
-                # Verificar que la feature existe
-                if feature_name not in var_metrics:
-                    continue
-                    
-                value = var_metrics[feature_name]
+            for flat_key, feature_name, w, s, sp in jobs:
+                value = flat_reward_component[flat_key]
                 aggregated_L[feature_name] += value
                 
-                weight = feature_config['weight']
-                scaled = feature_config['scaled']
-                setpoint = feature_config['setpoint']
-                
-                # exp(-scaled * (value - setpoint)^2) -> cercano a 1 cuando value ≈ setpoint
-                exp_term = math.exp(-scaled * (value - setpoint) ** 2)
-                # Penalidad: (1 - exp_term) es 0 cuando perfecto, ~1 cuando malo
-                lazo_reward -= weight * (1 - exp_term)
+                exp_term = math.exp(-s * (value - sp) ** 2)
+                lazo_reward -= w * (1 - exp_term)
             
             controller_rewards[var_obj] = lazo_reward
+            
+        global_lagrangian = 0.0
+        for feature_name, w, s, sp in self.global_jobs:
+            if feature_name in flat_reward_component:
+                value = flat_reward_component[feature_name]
+                aggregated_L[feature_name] += value
+                
+                exp_term = math.exp(-s * (value - sp) ** 2)
+                global_lagrangian += w * (1 - exp_term)
         
-        # Procesar global_vars si existe
-        if 'global_vars' in reward_component:
-            global_metrics = reward_component['global_vars']
-            global_lagrangian = 0.0
-            
-            for feature_name, feature_config in self.weights.items():
-                if feature_name in global_metrics:
-                    value = global_metrics[feature_name]
-                    aggregated_L[feature_name] += value
-                    
-                    weight = feature_config['weight']
-                    scaled = feature_config['scaled']
-                    setpoint = feature_config['setpoint']
-                    
-                    exp_term = math.exp(-scaled * (value - setpoint) ** 2)
-                    global_lagrangian += weight * (1 - exp_term)
-            
+        if global_lagrangian != 0.0:
             for var_obj in controller_rewards:
                 controller_rewards[var_obj] -= global_lagrangian
         
-        # Recompensa total (con signo negativo para consistencia)
         principal_reward = 0.0
         reward_params_record = {}
         
-        for feature_name, feature_config in self.weights.items():
-            value = aggregated_L[feature_name]
-            weight = feature_config['weight']
-            scaled = feature_config['scaled']
-            setpoint = feature_config['setpoint']
+        for feature_name, w, s, sp in self.global_jobs:
+            value = aggregated_L.get(feature_name, 0.0)
             
-            exp_term = math.exp(-scaled * (value - setpoint) ** 2)
-            # Penalidad: -(weight * (1 - exp_term))
-            contribution = -weight * (1 - exp_term)
+            exp_term = math.exp(-s * (value - sp) ** 2)
+            contribution = -w * (1 - exp_term)
             
             principal_reward += contribution
             reward_params_record[feature_name] = {
@@ -260,6 +264,30 @@ class LagrangeRewardCalculator:
         self.last_reward_params_record = reward_params_record
         
         return principal_reward, reward_params_record, controller_rewards
+    
+    def compute_agent_individual_reward(self, flat_reward_component, var_obj, agent_weights):
+        """
+        Calcula la recompensa individual para un agente delegando la matemática aquí.
+        """
+        agent_reward = 0.0
+        
+        if self.method == 'weighted_exponential':
+            for feature_name, weight_key, s, sp in self.agent_feature_jobs:
+                flat_key = f"{feature_name}_{var_obj}"
+                if weight_key in agent_weights:
+                    value = flat_reward_component[flat_key]
+                    w = agent_weights[weight_key]
+                    exp_term = math.exp(-s * (value - sp) ** 2)
+                    agent_reward -= w * (1 - exp_term)
+                    
+        else: # Default a lineal logic
+            for feature_name, weight_key, _, _ in self.agent_feature_jobs:
+                flat_key = f"{feature_name}_{var_obj}"
+                if weight_key in agent_weights:
+                    value = flat_reward_component[flat_key]
+                    agent_reward -= agent_weights[weight_key] * value
+                    
+        return agent_reward
     
     def get_reward_params_record(self):
         """

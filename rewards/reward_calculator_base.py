@@ -45,6 +45,33 @@ class RewardCalculatorBase:
         
         # Instanciar extra_rewards_handler dinámicamente
         self.extra_rewards_handler = self._instantiate_extra_rewards()
+        
+        # Precomputar pesos individuales si la estrategia es individual_reward
+        self.agent_individual_weights = self._build_agent_individual_weights()
+    
+    def _build_agent_individual_weights(self):
+        """
+        Extrae y almacena los pesos individuales por agente y variable para acceso O(1) en ejecución.
+        """
+        weights = {}
+        if self.reward_approach != 'individual_reward':
+            return weights
+            
+        method = self.principal_reward_impl.method if self.principal_reward_impl else 'lineal_combination'
+        individual_params = self.reward_config['individual_reward_params']
+        
+        if method == 'weighted_exponential':
+            params = individual_params.get('weighted_exponential_params', {})
+        else:
+            params = individual_params.get('lineal_combination_params', {})
+            
+        for agent_name, var_obj in self.agent_to_var_obj_map.items():
+            if var_obj in params and agent_name in params[var_obj]:
+                weights[agent_name] = params[var_obj][agent_name]
+            else:
+                weights[agent_name] = None
+        
+        return weights
     
     def _build_agent_to_var_obj_map(self):
         """
@@ -100,7 +127,7 @@ class RewardCalculatorBase:
         module = importlib.import_module(module_path)
         reward_class = getattr(module, class_name)
         
-        return reward_class(principal_config)
+        return reward_class(self.config_main)
     
     def _instantiate_extra_rewards(self):
         """
@@ -230,7 +257,7 @@ class RewardCalculatorBase:
             'goal_bonus': goal_bonus
         }
     
-    def _assign_rewards(self, global_reward, controller_rewards, extra_reward, reward_component):
+    def _assign_rewards(self, global_reward, controller_rewards, extra_reward, flat_reward_component):
         """
         Asigna recompensas a agentes según el reward_approach.
         
@@ -238,7 +265,7 @@ class RewardCalculatorBase:
             global_reward (float): Recompensa global (principal + extras)
             controller_rewards (dict): {var_obj: principal_reward_por_lazo}
             extra_reward (float): Extra reward global
-            reward_component (dict): Componentes de recompensa para individual_reward
+            flat_reward_component (dict): Componentes de recompensa aplanados
             
         Returns:
             dict: {agent_name: reward}
@@ -252,7 +279,6 @@ class RewardCalculatorBase:
         
         elif self.reward_approach == 'controller_reward':
             # Cada agente recibe la recompensa de su lazo (sin extras)
-            # Todos los agentes de un controlador reciben la misma recompensa
             for agent_name, var_obj in self.agent_to_var_obj_map.items():
                 if var_obj in controller_rewards:
                     assign_dict[agent_name] = controller_rewards[var_obj]
@@ -260,99 +286,22 @@ class RewardCalculatorBase:
                     assign_dict[agent_name] = 0.0
         
         elif self.reward_approach == 'individual_reward':
-            # Cada agente recibe recompensa ponderada según individual_reward_params
-            individual_params = self.reward_config['individual_reward_params']
-            assign_dict = self._compute_individual_rewards(
-                reward_component, controller_rewards, individual_params
-            )
+            # Delegar la matemática y extracción a la implementación específica
+            for agent_name, var_obj in self.agent_to_var_obj_map.items():
+                agent_weights = self.agent_individual_weights.get(agent_name)
+                
+                # Fallback a controller_reward si faltan pesos o no existe un principal_impl
+                if not agent_weights or not self.principal_reward_impl:
+                    assign_dict[agent_name] = controller_rewards.get(var_obj, 0.0)
+                else:
+                    assign_dict[agent_name] = self.principal_reward_impl.compute_agent_individual_reward(
+                        flat_reward_component, var_obj, agent_weights
+                    )
         
         else:
             # Fallback: todos reciben global
             for agent_name in self.agent_to_var_obj_map.keys():
                 assign_dict[agent_name] = global_reward
-        
-        return assign_dict
-    
-    def _compute_individual_rewards(self, reward_component, controller_rewards, individual_params):
-        """
-        Computa recompensas individuales ponderadas por agente.
-        Aplica pesos específicos por agente a cada componente L_* del var_obj.
-        
-        Fórmula: reward_agent = -Σ(w_feature * L_feature) para features del var_obj.
-        
-        Args:
-            reward_component (dict): {var_obj: {L_e, L_edot, ...}} del proceso de métricas
-            controller_rewards (dict): {var_obj: principal_reward_por_lazo} (fallback)
-            individual_params (dict): Pesos por agente desde config
-            
-        Returns:
-            dict: {agent_name: reward}
-        """
-        assign_dict = {}
-        
-        # Use mathematical method from principal_reward_impl if instantiated, fallback to linear
-        method = 'lineal_combination'
-        if self.principal_reward_impl and hasattr(self.principal_reward_impl, 'method'):
-            method = self.principal_reward_impl.method
-        
-        if method == 'weighted_exponential':
-            params = individual_params.get('weighted_exponential_params', {})
-        else:
-            params = individual_params.get('lineal_combination_params', {})
-        
-        # Mapeo feature L_* → llave de peso w_*
-        feature_to_weight_key = {
-            'L_e': 'w_e',
-            'L_edot': 'w_edot',
-            'L_I': 'w_I',
-            'L_u': 'w_u',
-            'L_delta_u': 'w_s'
-        }
-        
-        for agent_name, var_obj in self.agent_to_var_obj_map.items():
-            # Obtener pesos individuales del agente desde config
-            if var_obj not in params or agent_name not in params[var_obj]:
-                assign_dict[agent_name] = controller_rewards.get(var_obj)
-                continue
-                
-            agent_weights = params[var_obj][agent_name]
-            var_metrics = reward_component.get(var_obj, {})
-            
-            if not var_metrics:
-                assign_dict[agent_name] = controller_rewards.get(var_obj)
-                continue
-            
-            if method == 'weighted_exponential':
-                import math
-                agent_reward = 0.0
-                
-                for feature_name, weight_key in feature_to_weight_key.items():
-                    if feature_name in var_metrics and weight_key in agent_weights:
-                        value = var_metrics[feature_name]
-                        
-                        # Obtener config global del principal_reward_impl para 'scaled' y 'setpoint'
-                        scaled = 1.0
-                        setpoint = 0.0
-                        if hasattr(self.principal_reward_impl, 'weights') and feature_name in self.principal_reward_impl.weights:
-                            global_feat_cfg = self.principal_reward_impl.weights[feature_name]
-                            if isinstance(global_feat_cfg, dict):
-                                scaled = global_feat_cfg.get('scaled', 1.0)
-                                setpoint = global_feat_cfg.get('setpoint', 0.0)
-                        
-                        weight = agent_weights[weight_key]
-                        exp_term = math.exp(-scaled * (value - setpoint) ** 2)
-                        agent_reward -= weight * (1 - exp_term)
-                        
-                assign_dict[agent_name] = agent_reward
-                
-            else:
-                # Default a lineal_combination
-                agent_lagrangian = 0.0
-                for feature_name, weight_key in feature_to_weight_key.items():
-                    if feature_name in var_metrics and weight_key in agent_weights:
-                        agent_lagrangian += agent_weights[weight_key] * var_metrics[feature_name]
-                
-                assign_dict[agent_name] = -agent_lagrangian
         
         return assign_dict
 

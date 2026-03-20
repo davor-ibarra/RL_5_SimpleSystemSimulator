@@ -94,8 +94,8 @@ episode_data:
     derivative_error_cart_position_mean_squared: []
     delta_u_eff_pendulum_angle_mean_squared: []
     delta_u_eff_cart_position_mean_squared: []
-    #integral_error_pendulum_angle_mean: []
-    #integral_error_cart_position_mean: []
+    integral_error_pendulum_angle_mean_squared: []
+    integral_error_cart_position_mean_squared: []
     #u_eff_pendulum_angle_mean: []
     #u_eff_cart_position_mean: []
 

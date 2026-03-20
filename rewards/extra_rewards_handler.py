@@ -49,6 +49,12 @@ class ExtraRewardsHandler:
         self.accumulated_band_bonus = 0.0
         self.episode_time = 0.0
         
+        # Pre-computar var_objs una sola vez en el init
+        self.var_objs = self._get_configured_var_objs()
+        
+        # Precompilar listas de ejecución
+        self._compile_rules()
+        
         # Último reward_params_record
         self.last_extra_reward_params_record = {}
     
@@ -59,6 +65,74 @@ class ExtraRewardsHandler:
         self.accumulated_band_bonus = 0.0
         self.episode_time = 0.0
         self.last_extra_reward_params_record = {}
+        
+    def _compile_rules(self):
+        """
+        Extrae y precompila los parámetros activos desde los diccionarios de configuración.
+        Esto elimina la sobrecarga de evaluación condicional (if enabled, type==, etc) durante los loops de step.
+        """
+        self.inst_penalty_rule = None
+        self.delta_rules = []
+        self.goal_bonus_rule = None
+        self.band_ranges = {}
+        self.band_config_cache = None
+        self.dyn_pen_rules = []
+        self.dyn_inc_rules = []
+        
+        # 1. Penalties
+        inst_cfg = self.penalty_config['penalty_instantaneous_reward']
+        if inst_cfg.get('enabled', False):
+            method = inst_cfg['method']
+            if method == 'lineal':
+                self.inst_penalty_rule = ('lineal', inst_cfg['penalty_lineal_params']['time'])
+            elif method == 'quadratic':
+                self.inst_penalty_rule = ('quadratic', inst_cfg['penalty_quadratic_params']['time'])
+                
+        delta_cfg = self.penalty_config['penalty_delta_var']
+        if delta_cfg.get('enabled', False):
+            method = delta_cfg['method']
+            for v_name, cfg in delta_cfg['penalty_delta_var_params'].items():
+                self.delta_rules.append((v_name, self._extract_var_obj(v_name), method, cfg['weight']))
+                
+        # 2. Bonuses
+        goal_cfg = self.bonus_config['goal_bonus_reward']
+        if goal_cfg.get('enabled', False):
+            method = goal_cfg['method']
+            self.goal_bonus_rule = {
+                'flags': goal_cfg['success_flags'],
+                'method': method,
+                'static_val': goal_cfg['static_params']['bonus_value'] if method == 'static' else 0.0,
+                'decay': goal_cfg.get('decay_params', {})
+            }
+            
+        band_cfg = self.bonus_config['bandwidth_bonus']
+        if band_cfg.get('enabled', False):
+            self.band_config_cache = (band_cfg['per_step_band_bonus'], band_cfg['max_total_band_bonus'])
+            for v_name, (mn, mx) in band_cfg['ranges'].items():
+                v_obj = self._extract_var_obj(v_name)
+                if v_obj not in self.band_ranges:
+                    self.band_ranges[v_obj] = []
+                self.band_ranges[v_obj].append((v_name, mn, mx))
+                
+        # 3. Conditionals
+        dp_cfg = self.conditional_config['dynamic_penalty']
+        if dp_cfg.get('enabled', False):
+            method = dp_cfg['method']
+            for v_name, cfg in dp_cfg['dynamic_penalty_params'].items():
+                cond = cfg['condition']
+                v_obj = self._extract_var_obj(v_name)
+                self.dyn_pen_rules.append((
+                    v_name, v_obj, method, cfg['weight'], cond['feature'], 
+                    cond['type'], cond.get('scaled', 1.0), cond.get('setpoint', 0.0)
+                ))
+                
+        di_cfg = self.conditional_config['dynamic_incentive']
+        if di_cfg.get('enabled', False):
+            method = di_cfg['method']
+            params = di_cfg['dynamic_incentive_adapt_params'] if method == 'adaptative' else di_cfg['dynamic_incentive_lineal_params']
+            for v_name, cfg in params.items():
+                v_obj = self._extract_var_obj(v_name)
+                self.dyn_inc_rules.append((v_name, v_obj, method, cfg))
     
     def evaluate(self, extra_reward_component, termination_flag='unknown', current_time_sec=0.0):
         """
@@ -83,8 +157,8 @@ class ExtraRewardsHandler:
         total_extra = 0.0
         flat = {}
         
-        # Obtener var_objs desde las llaves configuradas
-        var_objs = self._get_configured_var_objs()
+        # Obtener var_objs precomputados
+        var_objs = self.var_objs
         
         # Inicializar acumulador per-var_obj
         var_totals = {var: 0.0 for var in var_objs}
@@ -133,419 +207,187 @@ class ExtraRewardsHandler:
         
         # Desde penalty_delta_var params
         delta_params = self.penalty_config['penalty_delta_var']['penalty_delta_var_params']
-        var_objs.update(delta_params.keys())
+        for var_name in delta_params.keys():
+            var_objs.add(self._extract_var_obj(var_name))
         
         # Desde bandwidth_bonus ranges
         band_ranges = self.bonus_config['bandwidth_bonus']['ranges']
         for var_name in band_ranges.keys():
-            # Extraer var_obj desde el nombre de la variable (e.g., error_pendulum_angle → pendulum_angle)
-            parts = var_name.split('_', 1)
-            if len(parts) == 2:
-                var_objs.add(parts[1])
+            var_objs.add(self._extract_var_obj(var_name))
         
         # Desde dynamic_penalty params
         dyn_pen_params = self.conditional_config['dynamic_penalty']['dynamic_penalty_params']
-        var_objs.update(dyn_pen_params.keys())
+        for var_name in dyn_pen_params.keys():
+            var_objs.add(self._extract_var_obj(var_name))
         
         # Desde dynamic_incentive params
         for key in ['dynamic_incentive_adapt_params', 'dynamic_incentive_lineal_params']:
             dyn_inc_params = self.conditional_config['dynamic_incentive'][key]
-            var_objs.update(dyn_inc_params.keys())
+            for var_name in dyn_inc_params.keys():
+                var_objs.add(self._extract_var_obj(var_name))
         
         return sorted(var_objs)
-    
+
+    def _extract_var_obj(self, var_name):
+        """
+        Extrae el nombre del var_obj subyacente removiendo prefijos conocidos.
+        """
+        prefixes = [
+            'delta_control_action_',
+            'control_action_',
+            'delta_u_eff_',
+            'u_eff_',
+            'error_'
+        ]
+        for p in prefixes:
+            if var_name.startswith(p):
+                return var_name[len(p):]
+        parts = var_name.split('_', 1)
+        return parts[1] if len(parts) == 2 else var_name
+
     def _evaluate_penalties(self, extra_reward_component, var_objs):
         """
-        Evalúa penalty_approach: penalty_instantaneous_reward, penalty_delta_var.
-        Retorna flat record con llaves per-var_obj.
-        
-        Returns:
-            tuple: (penalty_total, flat_record)
+        Evalúa penalty_approach iternando las listas de reglas pre-compiladas.
         """
         total_penalty = 0.0
-        flat = {}
+        flat = {f'extra_penalty_instantaneous_{v}': 0.0 for v in var_objs}
+        flat.update({f'extra_penalty_{v}': 0.0 for v in var_objs})
         
-        # penalty_instantaneous_reward (global → distribuir equitativamente entre var_objs)
-        inst_config = self.penalty_config['penalty_instantaneous_reward']
-        if inst_config['enabled']:
-            penalty = self._compute_instantaneous_penalty(inst_config)
+        # 1. Instantaneous Penalty
+        if self.inst_penalty_rule:
+            method, coeff = self.inst_penalty_rule
+            if method == 'lineal':
+                penalty = -coeff
+            else: # quadratic
+                self.episode_time += 1
+                penalty = -coeff * (self.episode_time ** 2)
+                
             total_penalty += penalty
             per_var = penalty / len(var_objs) if var_objs else 0.0
             for var in var_objs:
                 flat[f'extra_penalty_instantaneous_{var}'] = per_var
-        else:
-            for var in var_objs:
-                flat[f'extra_penalty_instantaneous_{var}'] = 0.0
-        
-        # penalty_delta_var (per-var_obj)
-        delta_config = self.penalty_config['penalty_delta_var']
-        if delta_config['enabled']:
-            penalty, delta_flat = self._compute_delta_var_penalty(delta_config, extra_reward_component, var_objs)
-            total_penalty += penalty
-            flat.update(delta_flat)
-        else:
-            for var in var_objs:
-                flat[f'extra_penalty_{var}'] = 0.0
-        
-        return total_penalty, flat
-    
-    def _compute_instantaneous_penalty(self, config):
-        """
-        Penalización por tiempo (instantánea).
-        Método: lineal o quadratic.
-        """
-        method = config['method']
-        
-        if method == 'lineal':
-            params = config['penalty_lineal_params']
-            time_coeff = params['time']
-            return -time_coeff  # Penalización fija por step
-        
-        elif method == 'quadratic':
-            params = config['penalty_quadratic_params']
-            time_coeff = params['time']
-            self.episode_time += 1
-            return -time_coeff * (self.episode_time ** 2)
-        
-        return 0.0
-    
-    def _compute_delta_var_penalty(self, config, extra_reward_component, var_objs):
-        """
-        Penalización por variación de variables.
-        Retorna (total, flat_record) con llaves extra_penalty_<var>.
-        """
-        method = config['method']
-        params = config['penalty_delta_var_params']
-        
-        total_penalty = 0.0
-        flat = {}
-        
-        for var_name, var_config in params.items():
-            weight = var_config['weight']
-            
-            # Buscar serie de la variable
-            series = extra_reward_component[var_name]
+                
+        # 2. Delta Penalty
+        for v_name, var_obj, method, weight in self.delta_rules:
+            series = extra_reward_component.get(v_name, [])
             if len(series) < 2:
-                flat[f'extra_penalty_{var_name}'] = 0.0
                 continue
-            
+                
             # Calcular variación promedio
             deltas = [abs(series[i] - series[i-1]) for i in range(1, len(series))]
             avg_delta = sum(deltas) / len(deltas) if deltas else 0.0
             
-            if method == 'quadratic':
-                penalty = -weight * (avg_delta ** 2)
-            else:
-                penalty = -weight * avg_delta
+            penalty = -weight * (avg_delta ** 2) if method == 'quadratic' else -weight * avg_delta
             
             total_penalty += penalty
-            flat[f'extra_penalty_{var_name}'] = penalty
-        
-        # Asegurar llaves para var_objs sin config
-        for var in var_objs:
-            if f'extra_penalty_{var}' not in flat:
-                flat[f'extra_penalty_{var}'] = 0.0
-        
+            flat[f'extra_penalty_{var_obj}'] += penalty
+            
         return total_penalty, flat
     
     def _evaluate_bonuses(self, extra_reward_component, termination_flag, current_time_sec, var_objs):
         """
-        Evalúa bonus_approach: goal_bonus_reward, bandwidth_bonus.
-        Retorna flat record con llaves per-var_obj.
-        
-        Returns:
-            tuple: (bonus_total, flat_record)
+        Evalúa bonus_approach iternando las listas de reglas pre-compiladas.
         """
         total_bonus = 0.0
-        flat = {}
+        flat = {f'extra_bonus_goal_{v}': 0.0 for v in var_objs}
+        flat.update({f'extra_bonus_band_{v}': 0.0 for v in var_objs})
         
-        # goal_bonus_reward
-        goal_config = self.bonus_config['goal_bonus_reward']
-        if goal_config['enabled']:
-            bonus = self._compute_goal_bonus(goal_config, termination_flag, current_time_sec)
+        # 1. Goal Bonus
+        if self.goal_bonus_rule and termination_flag in self.goal_bonus_rule['flags']:
+            method = self.goal_bonus_rule['method']
+            if method == 'static':
+                bonus = self.goal_bonus_rule['static_val']
+            else: # decay
+                decay = self.goal_bonus_rule['decay']
+                dtype, base, min_v, tau = decay['decay_type'], decay['base_value'], decay['min_value'], decay['time_constant_sec']
+                if dtype == 'exponential':
+                    bonus = min_v + (base - min_v) * math.exp(-current_time_sec / tau)
+                elif dtype == 'linear':
+                    bonus = max(min_v, base - (base - min_v) * (current_time_sec / tau))
+                else:
+                    bonus = base
+                    
             total_bonus += bonus
             for var in var_objs:
                 flat[f'extra_bonus_goal_{var}'] = bonus
-        else:
-            for var in var_objs:
-                flat[f'extra_bonus_goal_{var}'] = 0.0
-        
-        # bandwidth_bonus (per-var_obj)
-        band_config = self.bonus_config['bandwidth_bonus']
-        if band_config['enabled']:
-            bonus, band_flat = self._compute_bandwidth_bonus(band_config, extra_reward_component, var_objs)
-            total_bonus += bonus
-            flat.update(band_flat)
-        else:
-            for var in var_objs:
-                flat[f'extra_bonus_band_{var}'] = 0.0
-        
-        return total_bonus, flat
-    
-    def _compute_goal_bonus(self, config, termination_flag, current_time_sec):
-        """
-        Bono por alcanzar objetivo.
-        Soporta método static (valor fijo) y decay (exponencial/lineal con tiempo).
-        
-        Args:
-            config (dict): Configuración del goal_bonus
-            termination_flag (str): Flag de terminación actual
-            current_time_sec (float): Tiempo actual en el episodio [s]
+                
+        # 2. Bandwidth Bonus
+        if self.band_config_cache:
+            per_step_bonus, max_bonus = self.band_config_cache
             
-        Returns:
-            float: Bono (positivo si objetivo alcanzado, 0 en otro caso)
-        """
-        # Obtener flags que activan el bonus
-        success_flags = config['success_flags']
-        
-        # Verificar si el termination_flag indica éxito
-        if termination_flag not in success_flags:
-            return 0.0
-        
-        # Aplicar método correspondiente
-        method = config['method']
-        
-        if method == 'static':
-            static_params = config['static_params']
-            return static_params['bonus_value']
-        
-        elif method == 'decay':
-            decay_params = config['decay_params']
-            decay_type = decay_params['decay_type']
-            base_value = decay_params['base_value']
-            min_value = decay_params['min_value']
-            tau = decay_params['time_constant_sec']
-            
-            if decay_type == 'exponential':
-                bonus = min_value + (base_value - min_value) * math.exp(-current_time_sec / tau)
-            elif decay_type == 'linear':
-                bonus = max(min_value, base_value - (base_value - min_value) * (current_time_sec / tau))
-            else:
-                bonus = base_value
-            
-            return bonus
-        
-        return 0.0
-    
-    def _compute_bandwidth_bonus(self, config, extra_reward_component, var_objs):
-        """
-        Bono por permanecer dentro de banda.
-        Cuenta steps por var_obj donde la variable está en rango.
-        Retorna (total, flat_record) con llaves extra_bonus_band_<var>.
-        """
-        per_step_bonus = config['per_step_band_bonus']
-        max_bonus = config['max_total_band_bonus']
-        ranges = config['ranges']
-        
-        flat = {}
-        total_bonus = 0.0
-        
-        if not ranges:
-            for var in var_objs:
-                flat[f'extra_bonus_band_{var}'] = 0.0
-            return 0.0, flat
-        
-        # Mapear rangos a var_objs
-        var_ranges = {}
-        for var_name, (min_val, max_val) in ranges.items():
-            parts = var_name.split('_', 1)
-            var_obj = parts[1] if len(parts) == 2 else var_name
-            if var_obj not in var_ranges:
-                var_ranges[var_obj] = []
-            var_ranges[var_obj].append((var_name, min_val, max_val))
-        
-        for var in var_objs:
-            if var not in var_ranges:
-                flat[f'extra_bonus_band_{var}'] = 0.0
-                continue
-            
-            # Contar steps donde TODAS las features de este var_obj están en rango
-            range_entries = var_ranges[var]
-            series_list = [(extra_reward_component[vn], mn, mx) for vn, mn, mx in range_entries]
-            
-            if not series_list or any(len(s) == 0 for s, _, _ in series_list):
-                flat[f'extra_bonus_band_{var}'] = 0.0
-                continue
-            
-            min_len = min(len(s) for s, _, _ in series_list)
-            steps_in_band = 0
-            for t in range(min_len):
-                all_in = all(mn <= s[t] <= mx for s, mn, mx in series_list)
-                if all_in:
-                    steps_in_band += 1
-            
-            bonus = steps_in_band * per_step_bonus
-            
-            # Aplicar tope acumulativo global
-            potential_total = self.accumulated_band_bonus + bonus
-            if potential_total > max_bonus:
-                bonus = max(0.0, max_bonus - self.accumulated_band_bonus)
-            
-            self.accumulated_band_bonus += bonus
-            total_bonus += bonus
-            flat[f'extra_bonus_band_{var}'] = bonus
-        
-        # Asegurar llaves para var_objs sin rangos
-        for var in var_objs:
-            if f'extra_bonus_band_{var}' not in flat:
-                flat[f'extra_bonus_band_{var}'] = 0.0
-        
+            for var, range_entries in self.band_ranges.items():
+                series_list = [(extra_reward_component.get(vn, []), mn, mx) for vn, mn, mx in range_entries]
+                
+                if not series_list or any(len(s) == 0 for s, _, _ in series_list):
+                    continue
+                    
+                min_len = min(len(s) for s, _, _ in series_list)
+                steps_in_band = 0
+                for t in range(min_len):
+                    if all(mn <= s[t] <= mx for s, mn, mx in series_list):
+                        steps_in_band += 1
+                        
+                bonus = steps_in_band * per_step_bonus
+                potential_total = self.accumulated_band_bonus + bonus
+                if potential_total > max_bonus:
+                    bonus = max(0.0, max_bonus - self.accumulated_band_bonus)
+                    
+                self.accumulated_band_bonus += bonus
+                total_bonus += bonus
+                flat[f'extra_bonus_band_{var}'] = bonus
+                
         return total_bonus, flat
     
     def _evaluate_conditional(self, extra_reward_component, var_objs):
         """
-        Evalúa conditional_approach: dynamic_penalty, dynamic_incentive.
-        Retorna flat record con llaves per-var_obj.
-        
-        Returns:
-            tuple: (conditional_total, flat_record)
+        Evalúa conditional_approach iternando las listas de reglas pre-compiladas.
         """
         total_conditional = 0.0
-        flat = {}
+        flat = {f'extra_conditional_dynamic_penalty_{v}': 0.0 for v in var_objs}
+        flat.update({f'extra_conditional_dynamic_incentive_{v}': 0.0 for v in var_objs})
         
-        # dynamic_penalty (per-var_obj)
-        dyn_penalty_config = self.conditional_config['dynamic_penalty']
-        if dyn_penalty_config['enabled']:
-            penalty, pen_flat = self._compute_dynamic_penalty(dyn_penalty_config, extra_reward_component, var_objs)
-            total_conditional += penalty
-            flat.update(pen_flat)
-        else:
-            for var in var_objs:
-                flat[f'extra_conditional_dynamic_penalty_{var}'] = 0.0
-        
-        # dynamic_incentive (per-var_obj)
-        dyn_incentive_config = self.conditional_config['dynamic_incentive']
-        if dyn_incentive_config['enabled']:
-            incentive, inc_flat = self._compute_dynamic_incentive(dyn_incentive_config, extra_reward_component, var_objs)
-            total_conditional += incentive
-            flat.update(inc_flat)
-        else:
-            for var in var_objs:
-                flat[f'extra_conditional_dynamic_incentive_{var}'] = 0.0
-        
-        return total_conditional, flat
-    
-    def _compute_dynamic_penalty(self, config, extra_reward_component, var_objs):
-        """
-        Penalización dinámica condicionada a otra variable.
-        Retorna (total, flat_record) con llaves extra_conditional_dynamic_penalty_<var>.
-        """
-        method = config['method']
-        params = config['dynamic_penalty_params']
-        
-        total_penalty = 0.0
-        flat = {}
-        
-        for var_name, var_config in params.items():
-            weight = var_config['weight']
-            condition = var_config['condition']
+        # 1. Dynamic Penalty
+        for v_name, var_obj, method, weight, cond_feature, cond_type, cond_s, cond_sp in self.dyn_pen_rules:
+            series = extra_reward_component.get(v_name, [])
+            condition_series = extra_reward_component.get(cond_feature, [])
             
-            # Obtener series
-            series = extra_reward_component[var_name]
-            if not series:
-                flat[f'extra_conditional_dynamic_penalty_{var_name}'] = 0.0
+            if not series or not condition_series:
                 continue
-            
-            # Obtener condición
-            condition_feature = condition['feature']
-            condition_series = extra_reward_component[condition_feature]
-            
-            if not condition_series:
-                flat[f'extra_conditional_dynamic_penalty_{var_name}'] = 0.0
-                continue
-            
-            # Promedios
+                
             avg_var = sum(abs(v) for v in series) / len(series)
             avg_cond = sum(abs(v) for v in condition_series) / len(condition_series)
             
-            # Calcular condición exponencial
-            cond_type = condition['type']
-            scaled = condition['scaled']
-            setpoint = condition['setpoint']
+            cond_factor = math.exp(-cond_s * (avg_cond - cond_sp) ** 2) if cond_type == 'exp' else 1.0
+            penalty = -weight * (avg_var ** 2) * cond_factor if method == 'quadratic' else -weight * avg_var * cond_factor
             
-            if cond_type == 'exp':
-                cond_factor = math.exp(-scaled * (avg_cond - setpoint) ** 2)
-            else:
-                cond_factor = 1.0
+            total_conditional += penalty
+            flat[f'extra_conditional_dynamic_penalty_{var_obj}'] += penalty
             
-            # Penalización
-            if method == 'quadratic':
-                penalty = -weight * (avg_var ** 2) * cond_factor
-            else:
-                penalty = -weight * avg_var * cond_factor
-            
-            total_penalty += penalty
-            flat[f'extra_conditional_dynamic_penalty_{var_name}'] = penalty
-        
-        # Asegurar llaves para var_objs sin config
-        for var in var_objs:
-            if f'extra_conditional_dynamic_penalty_{var}' not in flat:
-                flat[f'extra_conditional_dynamic_penalty_{var}'] = 0.0
-        
-        return total_penalty, flat
-    
-    def _compute_dynamic_incentive(self, config, extra_reward_component, var_objs):
-        """
-        Incentivo dinámico adaptativo.
-        Retorna (total, flat_record) con llaves extra_conditional_dynamic_incentive_<var>.
-        """
-        method = config['method']
-        
-        if method == 'adaptative':
-            params = config['dynamic_incentive_adapt_params']
-        else:
-            params = config['dynamic_incentive_lineal_params']
-        
-        total_incentive = 0.0
-        flat = {}
-        
-        for var_name, var_config in params.items():
-            # Obtener series
-            series = extra_reward_component[var_name]
+        # 2. Dynamic Incentive
+        for v_name, var_obj, method, cfg in self.dyn_inc_rules:
+            series = extra_reward_component.get(v_name, [])
             if not series:
-                flat[f'extra_conditional_dynamic_incentive_{var_name}'] = 0.0
                 continue
-            
-            # Último valor de la serie
+                
             last_value = abs(series[-1])
-            
-            # Configuración
-            y_max = var_config['y_max']
+            y_max = cfg['y_max']
             
             if method == 'adaptative':
-                strength = var_config['strength']
-                x_feature = var_config['x']
-                x_sp = var_config['x_sp']
-                f_reward_config = var_config['f_reward']
-                
-                # Obtener x_series
-                x_series = extra_reward_component[x_feature]
+                x_series = extra_reward_component.get(cfg['x'], [])
                 x_val = abs(x_series[-1]) if x_series else 0.0
                 
-                # Tanh adaptativo
-                tanh_factor = math.tanh(strength * abs(x_val - x_sp))
-                
-                # f_reward exponencial
-                f_weight = f_reward_config['weight']
-                f_scaled = f_reward_config['scaled']
-                f_setpoint = f_reward_config['setpoint']
-                
-                exp_term = math.exp(-f_scaled * (last_value - f_setpoint) ** 2)
-                
-                incentive = y_max * tanh_factor * f_weight * exp_term
-            else:
-                x_max = var_config['x_max']
+                tanh_factor = math.tanh(cfg['strength'] * abs(x_val - cfg['x_sp']))
+                f_cfg = cfg['f_reward']
+                exp_term = math.exp(-f_cfg['scaled'] * (last_value - f_cfg['setpoint']) ** 2)
+                incentive = y_max * tanh_factor * f_cfg['weight'] * exp_term
+            else: # lineal
+                x_max = cfg['x_max']
                 incentive = y_max * min(1.0, last_value / x_max) if x_max > 0 else 0.0
+                
+            total_conditional += incentive
+            flat[f'extra_conditional_dynamic_incentive_{var_obj}'] += incentive
             
-            total_incentive += incentive
-            flat[f'extra_conditional_dynamic_incentive_{var_name}'] = incentive
-        
-        # Asegurar llaves para var_objs sin config
-        for var in var_objs:
-            if f'extra_conditional_dynamic_incentive_{var}' not in flat:
-                flat[f'extra_conditional_dynamic_incentive_{var}'] = 0.0
-        
-        return total_incentive, flat
+        return total_conditional, flat
     
     def get_extra_reward_params_record(self):
         """
