@@ -46,7 +46,7 @@ class ExtraRewardsHandler:
         self.conditional_config = config['conditional_approach']
         
         # Estado acumulativo para episodio
-        self.accumulated_band_bonus = 0.0
+        self.accumulated_band_bonus = {}
         self.episode_time = 0.0
         
         # Pre-computar var_objs una sola vez en el init
@@ -54,6 +54,7 @@ class ExtraRewardsHandler:
         
         # Precompilar listas de ejecución
         self._compile_rules()
+        self.reset_episode()
         
         # Último reward_params_record
         self.last_extra_reward_params_record = {}
@@ -62,7 +63,7 @@ class ExtraRewardsHandler:
         """
         Resetea el manejador al inicio de un episodio.
         """
-        self.accumulated_band_bonus = 0.0
+        self.accumulated_band_bonus = {var_obj: 0.0 for var_obj in self.band_ranges.keys()}
         self.episode_time = 0.0
         self.last_extra_reward_params_record = {}
         
@@ -75,7 +76,8 @@ class ExtraRewardsHandler:
         self.delta_rules = []
         self.goal_bonus_rule = None
         self.band_ranges = {}
-        self.band_config_cache = None
+        self.band_per_step_bonus = 0.0
+        self.band_max_bonus = {}
         self.dyn_pen_rules = []
         self.dyn_inc_rules = []
         
@@ -107,12 +109,13 @@ class ExtraRewardsHandler:
             
         band_cfg = self.bonus_config['bandwidth_bonus']
         if band_cfg.get('enabled', False):
-            self.band_config_cache = (band_cfg['per_step_band_bonus'], band_cfg['max_total_band_bonus'])
+            self.band_per_step_bonus = band_cfg['per_step_band_bonus']
             for v_name, (mn, mx) in band_cfg['ranges'].items():
                 v_obj = self._extract_var_obj(v_name)
                 if v_obj not in self.band_ranges:
                     self.band_ranges[v_obj] = []
                 self.band_ranges[v_obj].append((v_name, mn, mx))
+                self.band_max_bonus[v_obj] = band_cfg['max_total_band_bonus'][v_obj]
                 
         # 3. Conditionals
         dp_cfg = self.conditional_config['dynamic_penalty']
@@ -120,10 +123,14 @@ class ExtraRewardsHandler:
             method = dp_cfg['method']
             for v_name, cfg in dp_cfg['dynamic_penalty_params'].items():
                 cond = cfg['condition']
-                v_obj = self._extract_var_obj(v_name)
+                v_obj = self._resolve_var_obj(v_name, cfg)
+                signal_key = cfg.get('signal', v_name)
+                cond_type = cond['type']
+                cond_gain = self._get_condition_gain(cond)
+                cond_setpoint = self._get_condition_setpoint(cond)
                 self.dyn_pen_rules.append((
-                    v_name, v_obj, method, cfg['weight'], cond['feature'], 
-                    cond['type'], cond.get('scaled', 1.0), cond.get('setpoint', 0.0)
+                    signal_key, v_obj, method, cfg['weight'], cond['feature'],
+                    cond_type, cond_gain, cond_setpoint
                 ))
                 
         di_cfg = self.conditional_config['dynamic_incentive']
@@ -131,8 +138,9 @@ class ExtraRewardsHandler:
             method = di_cfg['method']
             params = di_cfg['dynamic_incentive_adapt_params'] if method == 'adaptative' else di_cfg['dynamic_incentive_lineal_params']
             for v_name, cfg in params.items():
-                v_obj = self._extract_var_obj(v_name)
-                self.dyn_inc_rules.append((v_name, v_obj, method, cfg))
+                v_obj = self._resolve_var_obj(v_name, cfg)
+                signal_key = cfg.get('y', cfg.get('signal', v_name))
+                self.dyn_inc_rules.append((signal_key, v_obj, method, cfg))
     
     def evaluate(self, extra_reward_component, termination_flag='unknown', current_time_sec=0.0):
         """
@@ -217,14 +225,14 @@ class ExtraRewardsHandler:
         
         # Desde dynamic_penalty params
         dyn_pen_params = self.conditional_config['dynamic_penalty']['dynamic_penalty_params']
-        for var_name in dyn_pen_params.keys():
-            var_objs.add(self._extract_var_obj(var_name))
+        for var_name, cfg in dyn_pen_params.items():
+            var_objs.add(self._resolve_var_obj(var_name, cfg))
         
         # Desde dynamic_incentive params
         for key in ['dynamic_incentive_adapt_params', 'dynamic_incentive_lineal_params']:
             dyn_inc_params = self.conditional_config['dynamic_incentive'][key]
-            for var_name in dyn_inc_params.keys():
-                var_objs.add(self._extract_var_obj(var_name))
+            for var_name, cfg in dyn_inc_params.items():
+                var_objs.add(self._resolve_var_obj(var_name, cfg))
         
         return sorted(var_objs)
 
@@ -242,8 +250,83 @@ class ExtraRewardsHandler:
         for p in prefixes:
             if var_name.startswith(p):
                 return var_name[len(p):]
-        parts = var_name.split('_', 1)
-        return parts[1] if len(parts) == 2 else var_name
+
+        if var_name.endswith('_raw'):
+            return var_name[:-4]
+
+        return var_name
+
+    def _resolve_var_obj(self, rule_name, cfg=None):
+        """
+        Resuelve el lazo al que pertenece una regla.
+        """
+        if isinstance(cfg, dict) and cfg.get('assign_to'):
+            return cfg['assign_to']
+        return self._extract_var_obj(rule_name)
+
+    def _get_condition_gain(self, cond, default=1.0):
+        """
+        Obtiene la ganancia principal de una condiciÃ³n soportando aliases
+        histÃ³ricos (`scaled`) y el nombre canÃ³nico (`strength`).
+        """
+        return cond.get('strength', cond.get('scaled', default))
+
+    def _get_condition_setpoint(self, cond, default=0.0):
+        """
+        Obtiene el setpoint de una condiciÃ³n soportando ambos esquemas:
+        `setpoint` y `x_sp`.
+        """
+        return cond.get('x_sp', cond.get('setpoint', default))
+
+    def _compute_condition_factor(self, factor_type, value, gain, setpoint):
+        """
+        EvalÃºa una compuerta condicional en funciÃ³n de la distancia al setpoint.
+
+        - exp: campana gaussiana centrada en el setpoint.
+        - tanh: funciÃ³n S monÃ³tona sobre la distancia al setpoint.
+        """
+        if gain < 0:
+            raise ValueError(f"Conditional gain must be non-negative, got {gain}")
+
+        distance = abs(value - setpoint)
+        if factor_type == 'exp':
+            if gain == 0:
+                return 0.0
+            return math.exp(-((distance / gain) ** 2))
+        if factor_type == 'tanh':
+            return math.tanh(gain * distance)
+
+        raise ValueError(f"Unsupported conditional factor type: {factor_type}")
+
+    def _compute_exp_reward(self, value, scaled, setpoint, weight):
+        """
+        Recompensa gaussiana con semantica del notebook:
+        weight * exp(-((value - setpoint) / scaled)^2)
+        """
+        if scaled is None or scaled <= 0:
+            raise ValueError(f"Exp reward scaled must be positive, got {scaled}")
+
+        normalized_distance = (value - setpoint) / scaled
+        return weight * math.exp(-(normalized_distance ** 2))
+
+    def _resolve_incentive_bucket(self, reward_mode, cfg):
+        """
+        Clasifica un incentivo por familia para facilitar el analisis.
+        """
+        if reward_mode == 'directional_dense':
+            return 'direction'
+        if reward_mode == 'directional_effort':
+            return 'effort'
+        if reward_mode == 'tanh_tracking' or 'track_weight' in cfg or 'base_weight' in cfg:
+            return 'tracking'
+        return 'tracking'
+
+    def _compute_directional_alignment(self, error_value, response_value, direction_sign, error_setpoint):
+        """
+        Magnitud correctiva positiva basada en error firmado y respuesta.
+        """
+        centered_error = error_value - error_setpoint
+        return max(0.0, direction_sign * centered_error * response_value)
 
     def _evaluate_penalties(self, extra_reward_component, var_objs):
         """
@@ -312,9 +395,7 @@ class ExtraRewardsHandler:
                 flat[f'extra_bonus_goal_{var}'] = bonus
                 
         # 2. Bandwidth Bonus
-        if self.band_config_cache:
-            per_step_bonus, max_bonus = self.band_config_cache
-            
+        if self.band_ranges:
             for var, range_entries in self.band_ranges.items():
                 series_list = [(extra_reward_component.get(vn, []), mn, mx) for vn, mn, mx in range_entries]
                 
@@ -327,12 +408,12 @@ class ExtraRewardsHandler:
                     if all(mn <= s[t] <= mx for s, mn, mx in series_list):
                         steps_in_band += 1
                         
-                bonus = steps_in_band * per_step_bonus
-                potential_total = self.accumulated_band_bonus + bonus
-                if potential_total > max_bonus:
-                    bonus = max(0.0, max_bonus - self.accumulated_band_bonus)
+                bonus = steps_in_band * self.band_per_step_bonus
+                potential_total = self.accumulated_band_bonus[var] + bonus
+                if potential_total > self.band_max_bonus[var]:
+                    bonus = max(0.0, self.band_max_bonus[var] - self.accumulated_band_bonus[var])
                     
-                self.accumulated_band_bonus += bonus
+                self.accumulated_band_bonus[var] += bonus
                 total_bonus += bonus
                 flat[f'extra_bonus_band_{var}'] = bonus
                 
@@ -345,47 +426,187 @@ class ExtraRewardsHandler:
         total_conditional = 0.0
         flat = {f'extra_conditional_dynamic_penalty_{v}': 0.0 for v in var_objs}
         flat.update({f'extra_conditional_dynamic_incentive_{v}': 0.0 for v in var_objs})
+        flat.update({f'extra_conditional_dynamic_incentive_tracking_{v}': 0.0 for v in var_objs})
+        flat.update({f'extra_conditional_dynamic_incentive_direction_{v}': 0.0 for v in var_objs})
+        flat.update({f'extra_conditional_dynamic_incentive_effort_{v}': 0.0 for v in var_objs})
         
         # 1. Dynamic Penalty
-        for v_name, var_obj, method, weight, cond_feature, cond_type, cond_s, cond_sp in self.dyn_pen_rules:
-            series = extra_reward_component.get(v_name, [])
+        for signal_key, var_obj, method, weight, cond_feature, cond_type, cond_gain, cond_sp in self.dyn_pen_rules:
+            series = extra_reward_component.get(signal_key, [])
             condition_series = extra_reward_component.get(cond_feature, [])
-            
+
             if not series or not condition_series:
                 continue
-                
-            avg_var = sum(abs(v) for v in series) / len(series)
-            avg_cond = sum(abs(v) for v in condition_series) / len(condition_series)
-            
-            cond_factor = math.exp(-cond_s * (avg_cond - cond_sp) ** 2) if cond_type == 'exp' else 1.0
-            penalty = -weight * (avg_var ** 2) * cond_factor if method == 'quadratic' else -weight * avg_var * cond_factor
-            
+
+            min_len = min(len(series), len(condition_series))
+            step_penalties = []
+            for idx in range(min_len):
+                signal_value = abs(series[idx])
+                cond_factor = self._compute_condition_factor(
+                    cond_type,
+                    condition_series[idx],
+                    cond_gain,
+                    cond_sp
+                )
+                if method == 'quadratic':
+                    step_penalties.append(-weight * (signal_value ** 2) * cond_factor)
+                else:
+                    step_penalties.append(-weight * signal_value * cond_factor)
+
+            penalty = sum(step_penalties) / len(step_penalties) if step_penalties else 0.0
             total_conditional += penalty
             flat[f'extra_conditional_dynamic_penalty_{var_obj}'] += penalty
-            
+
         # 2. Dynamic Incentive
-        for v_name, var_obj, method, cfg in self.dyn_inc_rules:
-            series = extra_reward_component.get(v_name, [])
+        for signal_key, var_obj, method, cfg in self.dyn_inc_rules:
+            series = extra_reward_component.get(signal_key, [])
             if not series:
                 continue
-                
-            last_value = abs(series[-1])
-            y_max = cfg['y_max']
-            
+
             if method == 'adaptative':
-                x_series = extra_reward_component.get(cfg['x'], [])
-                x_val = abs(x_series[-1]) if x_series else 0.0
-                
-                tanh_factor = math.tanh(cfg['strength'] * abs(x_val - cfg['x_sp']))
-                f_cfg = cfg['f_reward']
-                exp_term = math.exp(-f_cfg['scaled'] * (last_value - f_cfg['setpoint']) ** 2)
-                incentive = y_max * tanh_factor * f_cfg['weight'] * exp_term
+                reward_mode = cfg.get('reward_mode', 'legacy')
+                bucket = self._resolve_incentive_bucket(reward_mode, cfg)
+                uses_tracking_shape = (
+                    reward_mode == 'tanh_tracking'
+                    or 'track_weight' in cfg
+                    or 'track_scaled' in cfg
+                    or 'base_weight' in cfg
+                    or 'base_scaled' in cfg
+                )
+
+                if reward_mode == 'directional_dense':
+                    x_series = extra_reward_component.get(cfg['x'], [])
+                    y_series = extra_reward_component.get(cfg.get('y', signal_key), [])
+                    if not x_series or not y_series:
+                        continue
+
+                    min_len = min(len(x_series), len(y_series))
+                    step_rewards = []
+                    error_strength = cfg.get('error_strength', self._get_condition_gain(cfg))
+                    error_setpoint = self._get_condition_setpoint(cfg)
+                    direction_sign = cfg.get('direction_sign', cfg.get('target_sign', 1.0))
+                    alignment_strength = cfg.get('alignment_strength', 1.0)
+                    weight = cfg.get('weight', 0.0)
+
+                    for idx in range(min_len):
+                        x_val = x_series[idx]
+                        y_val = y_series[idx]
+                        alignment = self._compute_directional_alignment(
+                            x_val, y_val, direction_sign, error_setpoint
+                        )
+                        reward = (
+                            weight
+                            * math.tanh(error_strength * abs(x_val - error_setpoint))
+                            * math.tanh(alignment_strength * alignment)
+                        )
+                        step_rewards.append(reward)
+
+                    incentive = sum(step_rewards) / len(step_rewards) if step_rewards else 0.0
+                elif reward_mode == 'directional_effort':
+                    x_series = extra_reward_component.get(cfg['x'], [])
+                    direction_series = extra_reward_component.get(cfg['direction_y'], [])
+                    effort_signal = cfg.get('u', cfg.get('effort_signal', signal_key))
+                    effort_series = extra_reward_component.get(effort_signal, [])
+                    if not x_series or not direction_series or not effort_series:
+                        continue
+
+                    min_len = min(len(x_series), len(direction_series), len(effort_series))
+                    step_rewards = []
+                    error_strength = cfg.get('error_strength', self._get_condition_gain(cfg))
+                    error_setpoint = self._get_condition_setpoint(cfg)
+                    direction_sign = cfg.get('direction_sign', cfg.get('target_sign', 1.0))
+                    alignment_strength = cfg.get('alignment_strength', 1.0)
+                    effort_strength = cfg.get('effort_strength', 1.0)
+                    weight = cfg.get('weight', 0.0)
+
+                    for idx in range(min_len):
+                        x_val = x_series[idx]
+                        direction_val = direction_series[idx]
+                        effort_val = effort_series[idx]
+                        alignment = self._compute_directional_alignment(
+                            x_val, direction_val, direction_sign, error_setpoint
+                        )
+                        reward = (
+                            weight
+                            * math.tanh(error_strength * abs(x_val - error_setpoint))
+                            * math.tanh(alignment_strength * alignment)
+                            * math.tanh(effort_strength * abs(effort_val))
+                        )
+                        step_rewards.append(reward)
+
+                    incentive = sum(step_rewards) / len(step_rewards) if step_rewards else 0.0
+                elif uses_tracking_shape:
+                    x_series = extra_reward_component.get(cfg['x'], [])
+                    y_series = extra_reward_component.get(cfg.get('y', signal_key), [])
+                    if not x_series or not y_series:
+                        continue
+
+                    min_len = min(len(x_series), len(y_series))
+                    step_rewards = []
+                    y_max = cfg['y_max']
+                    strength = self._get_condition_gain(cfg)
+                    x_sp = self._get_condition_setpoint(cfg)
+                    target_sign = cfg.get('target_sign', 1.0)
+                    track_weight = cfg.get('track_weight', 0.0)
+                    track_scaled = cfg.get('track_scaled')
+                    base_weight = cfg.get('base_weight', 0.0)
+                    base_scaled = cfg.get('base_scaled')
+                    base_setpoint = cfg.get('base_setpoint', 0.0)
+                    band_low = cfg.get('band_low')
+                    band_high = cfg.get('band_high')
+                    band_bonus_per_step = cfg.get('band_bonus_per_step', 0.0)
+
+                    for idx in range(min_len):
+                        x_val = x_series[idx]
+                        y_val = y_series[idx]
+                        target = target_sign * y_max * math.tanh(strength * (x_val - x_sp))
+
+                        reward = 0.0
+                        if track_scaled is not None and track_weight > 0.0:
+                            reward += self._compute_exp_reward(y_val, track_scaled, target, track_weight)
+                        if base_scaled is not None and base_weight > 0.0:
+                            reward += self._compute_exp_reward(y_val, base_scaled, base_setpoint, base_weight)
+                        if (
+                            band_bonus_per_step > 0.0
+                            and band_low is not None
+                            and band_high is not None
+                            and band_low <= y_val <= band_high
+                        ):
+                            reward += band_bonus_per_step
+
+                        step_rewards.append(reward)
+
+                    incentive = sum(step_rewards) / len(step_rewards) if step_rewards else 0.0
+                else:
+                    last_value = abs(series[-1])
+                    y_max = cfg['y_max']
+                    x_series = extra_reward_component.get(cfg['x'], [])
+                    x_val = abs(x_series[-1]) if x_series else 0.0
+
+                    tanh_factor = self._compute_condition_factor(
+                        cfg.get('type', 'tanh'),
+                        x_val,
+                        self._get_condition_gain(cfg),
+                        self._get_condition_setpoint(cfg)
+                    )
+                    f_cfg = cfg['f_reward']
+                    exp_term = self._compute_condition_factor(
+                        f_cfg.get('type', 'exp'),
+                        last_value,
+                        self._get_condition_gain(f_cfg),
+                        self._get_condition_setpoint(f_cfg)
+                    )
+                    incentive = y_max * tanh_factor * f_cfg['weight'] * exp_term
             else: # lineal
+                bucket = 'tracking'
+                last_value = abs(series[-1])
+                y_max = cfg['y_max']
                 x_max = cfg['x_max']
                 incentive = y_max * min(1.0, last_value / x_max) if x_max > 0 else 0.0
-                
+
             total_conditional += incentive
             flat[f'extra_conditional_dynamic_incentive_{var_obj}'] += incentive
+            flat[f'extra_conditional_dynamic_incentive_{bucket}_{var_obj}'] += incentive
             
         return total_conditional, flat
     

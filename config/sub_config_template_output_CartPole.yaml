@@ -84,6 +84,14 @@ episode_data:
     L_edot_cart_position: []
     L_delta_u_pendulum_angle: []
     L_delta_u_cart_position: []
+    principal_gate_L_edot_pendulum_angle: []
+    principal_gate_L_edot_cart_position: []
+    principal_gate_L_delta_u_pendulum_angle: []
+    principal_gate_L_delta_u_cart_position: []
+    principal_contribution_L_edot_pendulum_angle: []
+    principal_contribution_L_edot_cart_position: []
+    principal_contribution_L_delta_u_pendulum_angle: []
+    principal_contribution_L_delta_u_cart_position: []
     #L_delta_e_pendulum_angle: []
     #L_delta_e_cart_position: []
 
@@ -151,20 +159,26 @@ episode_data:
     #r_L_delta_u_kd_cart_position: []
 
     # extra reward (per-var_obj)
-    #extra_penalty_instantaneous_pendulum_angle: []
-    #extra_penalty_instantaneous_cart_position: []
-    #xtra_penalty_pendulum_angle: []
-    #extra_penalty_cart_position: []
-    #extra_bonus_goal_pendulum_angle: []
-    #extra_bonus_goal_cart_position: []
+    extra_penalty_instantaneous_pendulum_angle: []
+    extra_penalty_instantaneous_cart_position: []
+    extra_penalty_pendulum_angle: []
+    extra_penalty_cart_position: []
+    extra_bonus_goal_pendulum_angle: []
+    extra_bonus_goal_cart_position: []
     extra_bonus_band_pendulum_angle: []
     extra_bonus_band_cart_position: []
     extra_conditional_dynamic_penalty_pendulum_angle: []
     extra_conditional_dynamic_penalty_cart_position: []
-    #extra_conditional_dynamic_incentive_pendulum_angle: []
-    #extra_conditional_dynamic_incentive_cart_position: []
-    #extra_total_pendulum_angle: []
-    #extra_total_cart_position: []
+    extra_conditional_dynamic_incentive_pendulum_angle: []
+    extra_conditional_dynamic_incentive_cart_position: []
+    extra_conditional_dynamic_incentive_tracking_pendulum_angle: []
+    extra_conditional_dynamic_incentive_tracking_cart_position: []
+    extra_conditional_dynamic_incentive_direction_pendulum_angle: []
+    extra_conditional_dynamic_incentive_direction_cart_position: []
+    extra_conditional_dynamic_incentive_effort_pendulum_angle: []
+    extra_conditional_dynamic_incentive_effort_cart_position: []
+    extra_total_pendulum_angle: []
+    extra_total_cart_position: []
 
     # learn (optional)
     # td_error_<agent_name>: []
@@ -183,6 +197,8 @@ episode_data:
 
     # episode rewards summary
     accumulated_band_bonus: 0.0
+    accumulated_band_bonus_pendulum_angle: 0.0
+    accumulated_band_bonus_cart_position: 0.0
     goal_bonus: 0.0
     total_reward: 0.0
 

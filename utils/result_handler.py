@@ -254,20 +254,19 @@ class ResultHandler:
         Returns:
             list: Lista de todos los episodios
         """
-        chunks_dir = os.path.join(self.output_dir, 'chunks')
         all_episodes = []
         
-        if not os.path.exists(chunks_dir):
+        if not os.path.exists(self.output_dir):
             return all_episodes
         
         # Listar archivos de chunks ordenados
         chunk_files = sorted([
-            f for f in os.listdir(chunks_dir) 
-            if f.startswith('episode_chunk_') and f.endswith('.json')
+            f for f in os.listdir(self.output_dir) 
+            if f.startswith('episodes_chunks_') and f.endswith('.json')
         ])
         
         for chunk_file in chunk_files:
-            filepath = os.path.join(chunks_dir, chunk_file)
+            filepath = os.path.join(self.output_dir, chunk_file)
             with open(filepath, 'r', encoding='utf-8') as f:
                 episodes = json.load(f)
                 all_episodes.extend(episodes)

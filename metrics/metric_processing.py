@@ -310,6 +310,12 @@ class MetricProcessing:
             delta_ctrl_key = f'delta_control_action_{var_obj}'
             extras[delta_ctrl_key] = columnar_data[delta_ctrl_key]
             
+        # Exponer variables crudas del sistema (e.g. pendulum_velocity_raw)
+        # para shaping firmado tipo notebook sin acoplarlas al reward principal.
+        for signal_name, signal_values in columnar_data.items():
+            if signal_name.endswith('_raw'):
+                extras[signal_name] = signal_values
+
         return extras
     
     def _aggregate_with_method(self, values, method):

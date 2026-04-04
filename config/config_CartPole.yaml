@@ -104,7 +104,7 @@ agent_base:
       actions_values:
         mode: universal     # universal | per_agent
         universal_params:
-          delta_gain: 0.1
+          delta_gain: 0.05
         per_agent_params:
           delta_gain:
             kp_pendulum_angle: 0.2
@@ -173,7 +173,7 @@ reward_base:
       reward_principal_name: lagrange_reward
       module_path: rewards.lagrange_reward_calculator
       class_name: LagrangeRewardCalculator
-      method: lineal_combination            # lineal_combination | weighted_exponential
+      method: weighted_exponential            # lineal_combination | weighted_exponential
       lineal_combination_params:
         features:
           L_e:       {weight: 0.35}           # Peso del error
@@ -182,10 +182,29 @@ reward_base:
           L_delta_u: {weight: 0.15}            # Peso de la variación de acción de control
       weighted_exponential_params:
         features:
-          L_e:       {weight: 1.0, scaled: 0.1, setpoint: 0.0}
-          L_edot:    {weight: 1.0, scaled: 0.1, setpoint: 0.0}
-          L_I:       {weight: 0.0, scaled: 0.3, setpoint: 0.0}
-          L_delta_u: {weight: 0.5, scaled: 0.25, setpoint: 0.0}
+          L_e:       {weight: 0.45, scaled: 2.2, setpoint: 0.0}
+          L_edot:    {weight: 0.18, scaled: 1.0, setpoint: 0.0}
+          L_I:       {weight: 0.0, scaled: 1.0, setpoint: 0.0}
+          L_delta_u: {weight: 0.05, scaled: 0.25, setpoint: 0.0}
+        feature_gates:
+          L_edot:
+            enabled: true
+            type: exp
+            source: error_{var_obj}_mean_squared
+            use_sqrt: true
+            setpoint: 0.0
+            per_var:
+              pendulum_angle: {scaled: 0.08}
+              cart_position: {scaled: 0.20}
+          L_delta_u:
+            enabled: true
+            type: exp
+            source: error_{var_obj}_mean_squared
+            use_sqrt: true
+            setpoint: 0.0
+            per_var:
+              pendulum_angle: {scaled: 0.07}
+              cart_position: {scaled: 0.16}
     # --- Extra Rewards ---
     extra_rewards:
       enabled: true
@@ -223,11 +242,13 @@ reward_base:
         # Bono de aproximación (zona ampliada)
         bandwidth_bonus:
           enabled: true
-          per_step_band_bonus: 0.15           # Bono por cada dt dentro de la zona ampliada
-          max_total_band_bonus: 37.5        # Tope máximo acumulado por episodio (None: ilimitado)
+          per_step_band_bonus: 0.005           # Bono por cada dt dentro de la zona ampliada
+          max_total_band_bonus:             # Tope máximo acumulado por episodio y por lazo
+            pendulum_angle: 4.0
+            cart_position: 3.0
           ranges: {
-                error_pendulum_angle: [-0.5, 0.5],
-                error_cart_position: [-1.5, 1.5]
+                error_pendulum_angle: [-0.03, 0.03],
+                error_cart_position: [-0.01, 0.01]
                 }
       # Conditional Approach
       conditional_approach:
@@ -235,21 +256,102 @@ reward_base:
           enabled: true
           method: quadratic               # "lineal" | "quadratic"
           dynamic_penalty_params:
-            control_action_pendulum_angle: {weight: 0.3, condition: {type: 'exp', feature: 'error_pendulum_angle', scaled: 3.0, setpoint: 0.0}}
-            control_action_cart_position: {weight: 0.2, condition: {type: 'exp', feature: 'error_cart_position', scaled: 3.0, setpoint: 0.0}}
+            control_action_pendulum_angle: {
+                                assign_to: 'pendulum_angle',
+                                signal: 'u_total_raw',
+                                weight: 0.03,
+                                condition: {type: 'exp', feature: 'error_pendulum_angle', scaled: 0.05, setpoint: 0.0}
+                              }
+            control_action_cart_position: {
+                                assign_to: 'cart_position',
+                                signal: 'cart_velocity_raw',
+                                weight: 0.04,
+                                condition: {type: 'exp', feature: 'error_cart_position', scaled: 0.08, setpoint: 0.0}
+                              }
         dynamic_incentive:
-          enabled: false
+          enabled: true
           method: adaptative                    # "lineal" | "adaptative"
           dynamic_incentive_lineal_params:
             error_pendulum_angle: {weight: 0.5, x: 'error_cart_position', x_max: 0.25, y_max: 0.1}
           dynamic_incentive_adapt_params:
-            error_cart_position: {
-                                type: 'tanh', y_max: 0.18, strength: 9.0, x: 'error_pendulum_angle', x_sp: -1.0,    # y_max -> corresponde al respectivo param
-                                f_reward: {type: 'exp', weight: 0.6, scaled: 0.08}
+            pendulum_angle_pose: {
+                                assign_to: 'pendulum_angle',
+                                reward_mode: 'tanh_tracking',
+                                x: 'error_cart_position',
+                                y: 'pendulum_angle_raw',
+                                x_sp: 0.0,
+                                y_max: 0.12,
+                                strength: 7.0,
+                                track_weight: 0.06,
+                                track_scaled: 0.09,
+                                base_weight: 0.03,
+                                base_scaled: 0.08,
+                                base_setpoint: 0.0
                               }
-            error_pendulum_angle: {
-                                type: 'tanh', y_max: 0.1, strength: 6.0, x: 'error_cart_position', x_sp: 0.0,    # y_max -> corresponde al respectivo param
-                                f_reward: {type: 'exp', weight: 0.1, scaled: 0.30}
+            pendulum_velocity_tracking: {
+                                assign_to: 'pendulum_angle',
+                                reward_mode: 'tanh_tracking',
+                                x: 'error_pendulum_angle',
+                                y: 'pendulum_velocity_raw',
+                                x_sp: 0.0,
+                                target_sign: -1.0,
+                                y_max: 0.5,
+                                strength: 5.0,
+                                track_weight: 0.18,
+                                track_scaled: 0.35,
+                                base_weight: 0.02,
+                                base_scaled: 0.20,
+                                base_setpoint: 0.0
+                              }
+            pendulum_velocity_direction: {
+                                assign_to: 'pendulum_angle',
+                                reward_mode: 'directional_dense',
+                                x: 'error_pendulum_angle',
+                                y: 'pendulum_velocity_raw',
+                                x_sp: 0.0,
+                                direction_sign: -1.0,
+                                error_strength: 8.0,
+                                alignment_strength: 12.0,
+                                weight: 0.32
+                              }
+            u_total_drive_pendulum: {
+                                assign_to: 'pendulum_angle',
+                                reward_mode: 'directional_effort',
+                                signal: 'u_total_raw',
+                                x: 'error_pendulum_angle',
+                                direction_y: 'pendulum_velocity_raw',
+                                u: 'u_total_raw',
+                                x_sp: 0.0,
+                                direction_sign: -1.0,
+                                error_strength: 8.0,
+                                alignment_strength: 12.0,
+                                effort_strength: 1.4,
+                                weight: 0.10
+                              }
+            cart_velocity_direction: {
+                                assign_to: 'cart_position',
+                                reward_mode: 'directional_dense',
+                                x: 'error_cart_position',
+                                y: 'cart_velocity_raw',
+                                x_sp: 0.0,
+                                direction_sign: 1.0,
+                                error_strength: 2.0,
+                                alignment_strength: 1.2,
+                                weight: 0.22
+                              }
+            u_total_drive_cart: {
+                                assign_to: 'cart_position',
+                                reward_mode: 'directional_effort',
+                                signal: 'u_total_raw',
+                                x: 'error_cart_position',
+                                direction_y: 'cart_velocity_raw',
+                                u: 'u_total_raw',
+                                x_sp: 0.0,
+                                direction_sign: 1.0,
+                                error_strength: 2.0,
+                                alignment_strength: 1.2,
+                                effort_strength: 0.9,
+                                weight: 0.08
                               }
 metrics_setup:
   # --- 1. System measure ----

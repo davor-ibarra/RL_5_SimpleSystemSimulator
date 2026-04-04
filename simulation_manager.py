@@ -185,11 +185,10 @@ class SimulationManager:
         end_episode_data = {
             'end_terminated': terminated,
             'end_termination_reason': self.termination_reason,
-            'accumulated_band_bonus': episode_reward_summary['accumulated_band_bonus'],
-            'goal_bonus': episode_reward_summary['goal_bonus'],
             'total_reward': self.total_reward,
             'total_agent_decisions': total_agent_decisions
         }
+        end_episode_data.update(episode_reward_summary)
         end_episode_data.update(self.agent_base.get_agent_params_records())
         self.metric_collector.on_episode_end(episode_id, end_episode_data)
         

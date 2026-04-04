@@ -182,6 +182,7 @@ class RewardCalculatorBase:
         self._last_principal_record = {}
         controller_rewards = {}
         extra_reward = 0.0
+        extra_rewards_by_var = {}
         self._last_extra_record = {}
         
         # 1. Calcular recompensa principal        
@@ -191,13 +192,19 @@ class RewardCalculatorBase:
         # 2. Calcular extra rewards (pasando termination_flag y current_time_sec)
         if self.extra_rewards_handler:
             extra_reward, self._last_extra_record = self.extra_rewards_handler.evaluate(extra_reward_component, termination_flag, current_time_sec)
+            for agent_name, var_obj in self.agent_to_var_obj_map.items():
+                extra_total_key = f'extra_total_{var_obj}'
+                if extra_total_key in self._last_extra_record:
+                    extra_rewards_by_var[var_obj] = self._last_extra_record[extra_total_key]
         
         # 3. Calcular global_interval_reward
         self._last_global_interval_reward = principal_reward + extra_reward
         
         # 4. Asignar recompensas a nombres de agentes según reward_approach
+        #    La recompensa base de cada agente sale de su lazo, y los extras
+        #    actúan como complemento global sobre esa señal de aprendizaje.
         self._last_assign_internal_reward_dict = self._assign_rewards(
-            self._last_global_interval_reward, controller_rewards, extra_reward, reward_component
+            self._last_global_interval_reward, controller_rewards, extra_rewards_by_var, reward_component
         )
         
         return self._last_assign_internal_reward_dict
@@ -242,29 +249,38 @@ class RewardCalculatorBase:
         Encapsula acceso a internos de extra_rewards_handler.
         
         Returns:
-            dict: {accumulated_band_bonus, goal_bonus}
+            dict: {accumulated_band_bonus, accumulated_band_bonus_<var_obj>, goal_bonus}
         """
         accumulated_band_bonus = 0.0
+        accumulated_band_bonus_by_var = {}
         goal_bonus = 0.0
         
         if self.extra_rewards_handler:
-            accumulated_band_bonus = self.extra_rewards_handler.accumulated_band_bonus
+            for var_obj, bonus_val in self.extra_rewards_handler.accumulated_band_bonus.items():
+                accumulated_band_bonus_by_var[f'accumulated_band_bonus_{var_obj}'] = bonus_val
+                accumulated_band_bonus += bonus_val
             last_record = self.extra_rewards_handler.last_extra_reward_params_record
-            goal_bonus = sum(v for k, v in last_record.items() if k.startswith('extra_bonus_goal_'))
+            for key, value in last_record.items():
+                if key.startswith('extra_bonus_goal_'):
+                    goal_bonus = value
+                    break
         
-        return {
+        summary = {
             'accumulated_band_bonus': accumulated_band_bonus,
             'goal_bonus': goal_bonus
         }
+        summary.update(accumulated_band_bonus_by_var)
+        
+        return summary
     
-    def _assign_rewards(self, global_reward, controller_rewards, extra_reward, flat_reward_component):
+    def _assign_rewards(self, global_reward, controller_rewards, extra_rewards_by_var, flat_reward_component):
         """
         Asigna recompensas a agentes según el reward_approach.
         
         Args:
             global_reward (float): Recompensa global (principal + extras)
             controller_rewards (dict): {var_obj: principal_reward_por_lazo}
-            extra_reward (float): Extra reward global
+            extra_rewards_by_var (dict): {var_obj: extra_reward_por_lazo}
             flat_reward_component (dict): Componentes de recompensa aplanados
             
         Returns:
@@ -278,25 +294,33 @@ class RewardCalculatorBase:
                 assign_dict[agent_name] = global_reward
         
         elif self.reward_approach == 'controller_reward':
-            # Cada agente recibe la recompensa de su lazo (sin extras)
+            # Cada agente recibe la recompensa de su lazo
+            # más los extras globales del intervalo.
             for agent_name, var_obj in self.agent_to_var_obj_map.items():
+                loop_extra_reward = 0.0
+                if var_obj in extra_rewards_by_var:
+                    loop_extra_reward = extra_rewards_by_var[var_obj]
                 if var_obj in controller_rewards:
-                    assign_dict[agent_name] = controller_rewards[var_obj]
+                    assign_dict[agent_name] = controller_rewards[var_obj] + loop_extra_reward
                 else:
-                    assign_dict[agent_name] = 0.0
+                    assign_dict[agent_name] = loop_extra_reward
         
         elif self.reward_approach == 'individual_reward':
-            # Delegar la matemática y extracción a la implementación específica
+            # Delegar la matemática y extracción a la implementación específica,
+            # manteniendo los extras como complemento global.
             for agent_name, var_obj in self.agent_to_var_obj_map.items():
-                agent_weights = self.agent_individual_weights.get(agent_name)
+                agent_weights = self.agent_individual_weights[agent_name]
+                loop_extra_reward = 0.0
+                if var_obj in extra_rewards_by_var:
+                    loop_extra_reward = extra_rewards_by_var[var_obj]
                 
                 # Fallback a controller_reward si faltan pesos o no existe un principal_impl
                 if not agent_weights or not self.principal_reward_impl:
-                    assign_dict[agent_name] = controller_rewards.get(var_obj, 0.0)
+                    assign_dict[agent_name] = controller_rewards[var_obj] + loop_extra_reward
                 else:
                     assign_dict[agent_name] = self.principal_reward_impl.compute_agent_individual_reward(
                         flat_reward_component, var_obj, agent_weights
-                    )
+                    ) + loop_extra_reward
         
         else:
             # Fallback: todos reciben global
