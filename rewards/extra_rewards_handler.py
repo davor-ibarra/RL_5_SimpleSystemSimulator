@@ -139,7 +139,10 @@ class ExtraRewardsHandler:
             params = di_cfg['dynamic_incentive_adapt_params'] if method == 'adaptative' else di_cfg['dynamic_incentive_lineal_params']
             for v_name, cfg in params.items():
                 v_obj = self._resolve_var_obj(v_name, cfg)
-                signal_key = cfg.get('y', cfg.get('signal', v_name))
+                if method == 'adaptative' and cfg['reward_mode'] == 'capture_directional_effort':
+                    signal_key = cfg['u']
+                else:
+                    signal_key = cfg.get('y', cfg.get('signal', v_name))
                 self.dyn_inc_rules.append((signal_key, v_obj, method, cfg))
     
     def evaluate(self, extra_reward_component, termination_flag='unknown', current_time_sec=0.0):
@@ -313,6 +316,8 @@ class ExtraRewardsHandler:
         """
         Clasifica un incentivo por familia para facilitar el analisis.
         """
+        if reward_mode == 'capture_directional_effort':
+            return 'capture'
         if reward_mode == 'directional_dense':
             return 'direction'
         if reward_mode == 'directional_effort':
@@ -427,6 +432,7 @@ class ExtraRewardsHandler:
         flat = {f'extra_conditional_dynamic_penalty_{v}': 0.0 for v in var_objs}
         flat.update({f'extra_conditional_dynamic_incentive_{v}': 0.0 for v in var_objs})
         flat.update({f'extra_conditional_dynamic_incentive_tracking_{v}': 0.0 for v in var_objs})
+        flat.update({f'extra_conditional_dynamic_incentive_capture_{v}': 0.0 for v in var_objs})
         flat.update({f'extra_conditional_dynamic_incentive_direction_{v}': 0.0 for v in var_objs})
         flat.update({f'extra_conditional_dynamic_incentive_effort_{v}': 0.0 for v in var_objs})
         
@@ -474,7 +480,35 @@ class ExtraRewardsHandler:
                     or 'base_scaled' in cfg
                 )
 
-                if reward_mode == 'directional_dense':
+                if reward_mode == 'capture_directional_effort':
+                    x_series = extra_reward_component[cfg['x']]
+                    u_series = extra_reward_component[cfg['u']]
+
+                    min_len = min(len(x_series), len(u_series))
+                    step_rewards = []
+
+                    x_sp = cfg['x_sp']
+                    capture_threshold = cfg['capture_threshold']
+                    direction_sign = cfg['direction_sign']
+                    capture_strength = cfg['capture_strength']
+                    alignment_strength = cfg['alignment_strength']
+                    weight = cfg['weight']
+
+                    for idx in range(min_len):
+                        e_val = x_series[idx] - x_sp
+                        u_eff_val = u_series[idx]
+
+                        capture_gate = math.tanh(
+                            capture_strength * max(0.0, abs(e_val) - capture_threshold)
+                        )
+                        corrective_drive = max(0.0, direction_sign * e_val * u_eff_val)
+                        alignment_gate = math.tanh(alignment_strength * corrective_drive)
+
+                        reward = weight * capture_gate * alignment_gate
+                        step_rewards.append(reward)
+
+                    incentive = sum(step_rewards) / len(step_rewards) if step_rewards else 0.0
+                elif reward_mode == 'directional_dense':
                     x_series = extra_reward_component.get(cfg['x'], [])
                     y_series = extra_reward_component.get(cfg.get('y', signal_key), [])
                     if not x_series or not y_series:

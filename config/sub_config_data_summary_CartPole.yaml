@@ -80,6 +80,8 @@ data_summary:
     extra_conditional_dynamic_incentive_cart_position,
     extra_conditional_dynamic_incentive_tracking_pendulum_angle,
     extra_conditional_dynamic_incentive_tracking_cart_position,
+    extra_conditional_dynamic_incentive_capture_pendulum_angle,
+    extra_conditional_dynamic_incentive_capture_cart_position,
     extra_conditional_dynamic_incentive_direction_pendulum_angle,
     extra_conditional_dynamic_incentive_direction_cart_position,
     extra_conditional_dynamic_incentive_effort_pendulum_angle,

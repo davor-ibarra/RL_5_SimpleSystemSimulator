@@ -1,0 +1,9 @@
+{
+  "run_folder": "20260407_2320",
+  "selected_episode_id": 1040,
+  "episode_selection_mode": "stabilization_success_best_reward",
+  "analysis_output_dir": "C:\\Users\\davor\\Escritorio\\DOCTORADO\\Tesis\\RL_5_SimpleSystemSimulator\\analysis\\20260407_2320\\reward_behavior",
+  "tables_xlsx": "C:\\Users\\davor\\Escritorio\\DOCTORADO\\Tesis\\RL_5_SimpleSystemSimulator\\analysis\\20260407_2320\\reward_behavior\\reward_behavior_tables.xlsx",
+  "n_saved_figures": 7,
+  "n_frame_adjustments": 140
+}
