@@ -64,6 +64,7 @@ class PIDController:
         
         # Estado de saturación (será actualizado por controller_base)
         self.is_saturated = False
+        self.saturation_proportion = 0.0
         self.u_eff = 0.0
         self.prev_u_eff = 0.0
         self.delta_u_eff = 0.0
@@ -223,6 +224,11 @@ class PIDController:
         self.prev_u_eff = self.u_eff
         self.u_eff = u_eff
         self.delta_u_eff = self.u_eff - self.prev_u_eff
+
+        if self.control_action != 0.0:
+            self.saturation_proportion = abs(self.control_action - self.u_eff) / abs(self.control_action)
+        else:
+            self.saturation_proportion = 0.0
     
     def get_controller_record(self):
         """
@@ -243,6 +249,8 @@ class PIDController:
             f'u_eff_{self.var_obj}': self.u_eff,
             f'prev_u_eff_{self.var_obj}': self.prev_u_eff,
             f'delta_u_eff_{self.var_obj}': self.delta_u_eff,
+            f'is_saturated_{self.var_obj}': self.is_saturated,
+            f'saturation_proportion_{self.var_obj}': self.saturation_proportion,
             f'kp_{self.var_obj}': self.kp,
             f'ki_{self.var_obj}': self.ki,
             f'kd_{self.var_obj}': self.kd

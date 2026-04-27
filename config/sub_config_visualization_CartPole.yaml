@@ -3,7 +3,7 @@ plots:
   - type: bar
     enabled: true # Enable/disable this specific plot
     source: summary # Use data from the summary DataFrame
-    variable: termination_reason # The column in the summary to count/group by
+    variable: end_termination_reason # The column in the summary to count/group by
     output_filename: fig1_termination_reason_distribution.png # Specific output name
     config:
       title: Termination Reason Distribution
@@ -119,8 +119,8 @@ plots:
       ylabel_fontsize: 12
       xmin: null
       xmax: null
-      ymin: 0
-      ymax: null
+      ymin: -50
+      ymax: 0
       tick_fontsize: 10
       xtick_rotation: 30
       num_xticks: null

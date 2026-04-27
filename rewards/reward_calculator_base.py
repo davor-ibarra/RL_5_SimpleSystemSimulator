@@ -45,9 +45,18 @@ class RewardCalculatorBase:
         
         # Instanciar extra_rewards_handler dinámicamente
         self.extra_rewards_handler = self._instantiate_extra_rewards()
+
+        # Instanciar coordination_reward_handler dinámicamente
+        self.coordination_reward_handler = self._instantiate_coordination_reward()
         
         # Precomputar pesos individuales si la estrategia es individual_reward
         self.agent_individual_weights = self._build_agent_individual_weights()
+
+        self._last_principal_record = {}
+        self._last_extra_record = {}
+        self._last_coordination_record = {}
+        self._last_global_interval_reward = 0.0
+        self._last_assign_internal_reward_dict = {}
     
     def _build_agent_individual_weights(self):
         """
@@ -148,15 +157,43 @@ class RewardCalculatorBase:
         handler_class = getattr(module, class_name)
         
         return handler_class(extra_config)
+
+    def _instantiate_coordination_reward(self):
+        """
+        Instancia dinámicamente el manejador de reward coordinativo.
+
+        Returns:
+            object: Instancia del coordination_reward_handler
+        """
+        coordination_config = self.reward_calculation_config['coordination_reward']
+
+        if not coordination_config['enabled']:
+            return None
+
+        module_path = coordination_config['module_path']
+        class_name = coordination_config['class_name']
+
+        module = importlib.import_module(module_path)
+        handler_class = getattr(module, class_name)
+
+        return handler_class(coordination_config)
     
     def reset_episode(self):
         """
         Resetea el calculador al inicio de un episodio.
         """
+        self._last_principal_record = {}
+        self._last_extra_record = {}
+        self._last_coordination_record = {}
+        self._last_global_interval_reward = 0.0
+        self._last_assign_internal_reward_dict = {}
+
         if self.principal_reward_impl:
             self.principal_reward_impl.reset_episode()
         if self.extra_rewards_handler:
             self.extra_rewards_handler.reset_episode()
+        if self.coordination_reward_handler:
+            self.coordination_reward_handler.reset_episode()
     
     def calculate(self, processed_metrics_dict, termination_flag='unknown', current_time_sec=0.0):
         """
@@ -184,6 +221,9 @@ class RewardCalculatorBase:
         extra_reward = 0.0
         extra_rewards_by_var = {}
         self._last_extra_record = {}
+        coordination_reward = 0.0
+        coordination_rewards_by_var = {}
+        self._last_coordination_record = {}
         
         # 1. Calcular recompensa principal        
         if self.principal_reward_impl:
@@ -196,15 +236,25 @@ class RewardCalculatorBase:
                 extra_total_key = f'extra_total_{var_obj}'
                 if extra_total_key in self._last_extra_record:
                     extra_rewards_by_var[var_obj] = self._last_extra_record[extra_total_key]
+
+        # 3. Calcular reward coordinativo
+        if self.coordination_reward_handler:
+            coordination_reward, self._last_coordination_record, coordination_rewards_by_var = (
+                self.coordination_reward_handler.evaluate(reward_component, extra_reward_component)
+            )
         
-        # 3. Calcular global_interval_reward
-        self._last_global_interval_reward = principal_reward + extra_reward
+        # 4. Calcular global_interval_reward
+        self._last_global_interval_reward = principal_reward + extra_reward + coordination_reward
         
-        # 4. Asignar recompensas a nombres de agentes según reward_approach
+        # 5. Asignar recompensas a nombres de agentes según reward_approach
         #    La recompensa base de cada agente sale de su lazo, y los extras
         #    actúan como complemento global sobre esa señal de aprendizaje.
         self._last_assign_internal_reward_dict = self._assign_rewards(
-            self._last_global_interval_reward, controller_rewards, extra_rewards_by_var, reward_component
+            self._last_global_interval_reward,
+            controller_rewards,
+            extra_rewards_by_var,
+            coordination_rewards_by_var,
+            reward_component
         )
         
         return self._last_assign_internal_reward_dict
@@ -240,6 +290,9 @@ class RewardCalculatorBase:
         
         # Extra record (ya viene plano desde ExtraRewardsHandler)
         records.update(self._last_extra_record)
+
+        # Coordination record
+        records.update(self._last_coordination_record)
         
         return records
     
@@ -273,7 +326,7 @@ class RewardCalculatorBase:
         
         return summary
     
-    def _assign_rewards(self, global_reward, controller_rewards, extra_rewards_by_var, flat_reward_component):
+    def _assign_rewards(self, global_reward, controller_rewards, extra_rewards_by_var, coordination_rewards_by_var, flat_reward_component):
         """
         Asigna recompensas a agentes según el reward_approach.
         
@@ -281,6 +334,7 @@ class RewardCalculatorBase:
             global_reward (float): Recompensa global (principal + extras)
             controller_rewards (dict): {var_obj: principal_reward_por_lazo}
             extra_rewards_by_var (dict): {var_obj: extra_reward_por_lazo}
+            coordination_rewards_by_var (dict): {var_obj: reward_coordinativo_por_lazo}
             flat_reward_component (dict): Componentes de recompensa aplanados
             
         Returns:
@@ -295,32 +349,46 @@ class RewardCalculatorBase:
         
         elif self.reward_approach == 'controller_reward':
             # Cada agente recibe la recompensa de su lazo
-            # más los extras globales del intervalo.
+            # más los extras globales del intervalo y el bonus coordinativo.
             for agent_name, var_obj in self.agent_to_var_obj_map.items():
                 loop_extra_reward = 0.0
                 if var_obj in extra_rewards_by_var:
                     loop_extra_reward = extra_rewards_by_var[var_obj]
+                loop_coordination_reward = 0.0
+                if var_obj in coordination_rewards_by_var:
+                    loop_coordination_reward = coordination_rewards_by_var[var_obj]
                 if var_obj in controller_rewards:
-                    assign_dict[agent_name] = controller_rewards[var_obj] + loop_extra_reward
+                    assign_dict[agent_name] = (
+                        controller_rewards[var_obj]
+                        + loop_extra_reward
+                        + loop_coordination_reward
+                    )
                 else:
-                    assign_dict[agent_name] = loop_extra_reward
+                    assign_dict[agent_name] = loop_extra_reward + loop_coordination_reward
         
         elif self.reward_approach == 'individual_reward':
             # Delegar la matemática y extracción a la implementación específica,
-            # manteniendo los extras como complemento global.
+            # manteniendo los extras y la coordinación como complemento global.
             for agent_name, var_obj in self.agent_to_var_obj_map.items():
                 agent_weights = self.agent_individual_weights[agent_name]
                 loop_extra_reward = 0.0
                 if var_obj in extra_rewards_by_var:
                     loop_extra_reward = extra_rewards_by_var[var_obj]
+                loop_coordination_reward = 0.0
+                if var_obj in coordination_rewards_by_var:
+                    loop_coordination_reward = coordination_rewards_by_var[var_obj]
                 
                 # Fallback a controller_reward si faltan pesos o no existe un principal_impl
                 if not agent_weights or not self.principal_reward_impl:
-                    assign_dict[agent_name] = controller_rewards[var_obj] + loop_extra_reward
+                    assign_dict[agent_name] = (
+                        controller_rewards[var_obj]
+                        + loop_extra_reward
+                        + loop_coordination_reward
+                    )
                 else:
                     assign_dict[agent_name] = self.principal_reward_impl.compute_agent_individual_reward(
                         flat_reward_component, var_obj, agent_weights
-                    ) + loop_extra_reward
+                    ) + loop_extra_reward + loop_coordination_reward
         
         else:
             # Fallback: todos reciben global

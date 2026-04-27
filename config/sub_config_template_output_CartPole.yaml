@@ -31,6 +31,10 @@ episode_data:
     #saturation_error_global: []
     #prev_u_total: []
     delta_u_total: []
+    is_saturated_pendulum_angle: []
+    is_saturated_cart_position: []
+    saturation_proportion_pendulum_angle: []
+    saturation_proportion_cart_position: []
 
     # ---- per-controller canonical PID signals (step-level) ----
     # naming: <signal>_<controller_name>_<var_obj>
@@ -75,37 +79,43 @@ episode_data:
 
     # --- metrics processing ---
     
-
     # ---- metrics / reward components (interval-level) ----
     # per controller
     L_e_pendulum_angle: []
     L_e_cart_position: []
     L_edot_pendulum_angle: []
     L_edot_cart_position: []
+    L_u_pendulum_angle: []
+    L_u_cart_position: []
     L_delta_u_pendulum_angle: []
     L_delta_u_cart_position: []
-    principal_gate_L_edot_pendulum_angle: []
-    principal_gate_L_edot_cart_position: []
-    principal_gate_L_delta_u_pendulum_angle: []
-    principal_gate_L_delta_u_cart_position: []
-    principal_contribution_L_edot_pendulum_angle: []
-    principal_contribution_L_edot_cart_position: []
-    principal_contribution_L_delta_u_pendulum_angle: []
-    principal_contribution_L_delta_u_cart_position: []
+
+    principal_reward: []
+    L_pendulum_angle: []
+    L_cart_position: []
+
     #L_delta_e_pendulum_angle: []
     #L_delta_e_cart_position: []
 
+    # --- gating mechanism ---
+    #principal_gate_L_e_pendulum_angle: []
+    #principal_gate_L_e_cart_position: []
+    principal_gate_L_edot_pendulum_angle: []
+    principal_gate_L_edot_cart_position: []
+    principal_gate_L_u_pendulum_angle: []
+    principal_gate_L_u_cart_position: []
+
     # intermediate aggregated variables (auditing)
-    error_pendulum_angle_mean_squared: []
-    error_cart_position_mean_squared: []
-    derivative_error_pendulum_angle_mean_squared: []
-    derivative_error_cart_position_mean_squared: []
-    delta_u_eff_pendulum_angle_mean_squared: []
-    delta_u_eff_cart_position_mean_squared: []
-    integral_error_pendulum_angle_mean_squared: []
-    integral_error_cart_position_mean_squared: []
-    #u_eff_pendulum_angle_mean: []
-    #u_eff_cart_position_mean: []
+    error_pendulum_angle_rms: []
+    error_cart_position_rms: []
+    derivative_error_pendulum_angle_rms: []
+    derivative_error_cart_position_rms: []
+    #delta_u_eff_pendulum_angle_rms: []
+    #delta_u_eff_cart_position_rms: []
+    integral_error_pendulum_angle_rms: []
+    integral_error_cart_position_rms: []
+    u_eff_pendulum_angle_rms: []
+    u_eff_cart_position_rms: []
 
     # global vars (optional)
     #L_u_total: []
@@ -159,33 +169,68 @@ episode_data:
     #r_L_delta_u_kd_cart_position: []
 
     # extra reward (per-var_obj)
-    extra_penalty_instantaneous_pendulum_angle: []
-    extra_penalty_instantaneous_cart_position: []
-    extra_penalty_pendulum_angle: []
-    extra_penalty_cart_position: []
-    extra_bonus_goal_pendulum_angle: []
-    extra_bonus_goal_cart_position: []
-    extra_bonus_band_pendulum_angle: []
-    extra_bonus_band_cart_position: []
-    extra_conditional_dynamic_penalty_pendulum_angle: []
-    extra_conditional_dynamic_penalty_cart_position: []
-    extra_conditional_dynamic_incentive_pendulum_angle: []
-    extra_conditional_dynamic_incentive_cart_position: []
-    extra_conditional_dynamic_incentive_tracking_pendulum_angle: []
-    extra_conditional_dynamic_incentive_tracking_cart_position: []
-    extra_conditional_dynamic_incentive_capture_pendulum_angle: []
-    extra_conditional_dynamic_incentive_capture_cart_position: []
-    extra_conditional_dynamic_incentive_direction_pendulum_angle: []
-    extra_conditional_dynamic_incentive_direction_cart_position: []
-    extra_conditional_dynamic_incentive_effort_pendulum_angle: []
-    extra_conditional_dynamic_incentive_effort_cart_position: []
+    extra_total_pendulum_angle: []
+    extra_total_cart_position: []
+    #extra_penalty_instantaneous_pendulum_angle: []
+    #extra_penalty_instantaneous_cart_position: []
+    #extra_penalty_pendulum_angle: []
+    #extra_penalty_cart_position: []
+    #extra_bonus_goal_pendulum_angle: []
+    #extra_bonus_goal_cart_position: []
+    #extra_bonus_band_pendulum_angle: []
+    #extra_bonus_band_cart_position: []
+    #extra_conditional_dynamic_penalty_pendulum_angle: []
+    #extra_conditional_dynamic_penalty_cart_position: []
+    #extra_conditional_dynamic_incentive_pendulum_angle: []
+    #extra_conditional_dynamic_incentive_cart_position: []
+    #extra_conditional_dynamic_incentive_tracking_pendulum_angle: []
+    #extra_conditional_dynamic_incentive_tracking_cart_position: []
+    #extra_conditional_dynamic_incentive_capture_pendulum_angle: []
+    #extra_conditional_dynamic_incentive_capture_cart_position: []
+    #extra_conditional_dynamic_incentive_direction_pendulum_angle: []
+    #extra_conditional_dynamic_incentive_direction_cart_position: []
+    #extra_conditional_dynamic_incentive_effort_pendulum_angle: []
+    #extra_conditional_dynamic_incentive_effort_cart_position: []
     extra_total_pendulum_angle: []
     extra_total_cart_position: []
 
+    # --- coordination reward (per-var_obj) ---
+    principal_contribution_L_e_pendulum_angle: []
+    principal_contribution_L_e_cart_position: []
+    principal_contribution_L_edot_pendulum_angle: []
+    principal_contribution_L_edot_cart_position: []
+    principal_contribution_L_u_pendulum_angle: []
+    principal_contribution_L_u_cart_position: []
+    #principal_contribution_L_delta_u_pendulum_angle: []
+    #principal_contribution_L_delta_u_cart_position: []
+    
+    coordination_task_potential: []
+    coordination_task_progress_delta: []
+    coordination_task_progress_positive: []
+    coordination_reward_total: []
+    
+    coordination_credit_raw_pendulum_angle: []
+    coordination_credit_raw_cart_position: []
+    coordination_credit_share_pendulum_angle: []
+    coordination_credit_share_cart_position: []
+
+    extra_conditional_coordination_bonus_pendulum_angle: []
+    extra_conditional_coordination_bonus_cart_position: []
+
     # learn (optional)
-    # td_error_<agent_name>: []
-    # q_value_<agent_name>: []
-    # <learn_key>_<agent_name>: []
+    td_error_kp_pendulum_angle: []
+    td_error_ki_pendulum_angle: []
+    td_error_kd_pendulum_angle: []
+    td_error_kp_cart_position: []
+    td_error_ki_cart_position: []
+    td_error_kd_cart_position: []
+
+    q_value_kp_pendulum_angle: []
+    q_value_ki_pendulum_angle: []
+    q_value_kd_pendulum_angle: []
+    q_value_kp_cart_position: []
+    q_value_ki_cart_position: []
+    q_value_kd_cart_position: []
 
   end_episode_data:
     end_terminated: false

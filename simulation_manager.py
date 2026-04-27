@@ -128,6 +128,7 @@ class SimulationManager:
         # 5.1 Registrar paso explícito t=0 para que las ganancias iniciales queden impecablemente registradas
         # antes de ser mutadas por la primera acción del agente.
         step_flat_data_t0 = {'t_sec': 0.0}
+        step_idx_global = 1
         step_flat_data_t0.update(self.dynamic_system_base.get_records())
         step_flat_data_t0.update(self.controller_base.get_records())
         self.metric_collector.on_step(step_flat_data_t0)
@@ -137,9 +138,11 @@ class SimulationManager:
         self.termination_reason = ""
         self.total_reward = 0.0
         total_agent_decisions = 0
-        step_idx_global = 0
+        max_episode_steps = int(round(self.episode_duration_sec / self.dt_sec))
+        executed_episode_steps = 0
         
-        while self.current_time_sec < self.episode_duration_sec and not terminated:
+        while executed_episode_steps < max_episode_steps and not terminated:
+            remaining_steps = max_episode_steps - executed_episode_steps
             # 6.1. Decide acciones del intervalo
             actions_dict = self.agent_base.select_action(self.prev_agent_state)
             
@@ -151,7 +154,8 @@ class SimulationManager:
                 self.current_time_sec, 
                 actions_dict, 
                 self.prev_agent_state, 
-                self.prev_dynamic_system_state_norm_dict
+                self.prev_dynamic_system_state_norm_dict,
+                remaining_steps
             )
             
             # 6.4. Construir paquete plano para interval_data y registrar
@@ -165,8 +169,11 @@ class SimulationManager:
             terminated = interval_result['interval_level_data']['simulation_state_dict']['terminated']
             self.termination_reason = interval_result['interval_level_data']['simulation_state_dict']['termination_reason']
             self.total_reward += interval_result['interval_level_data']['global_interval_reward']
-            step_idx_global += n_steps_executed
+
+            executed_episode_steps += n_steps_executed
             self.current_time_sec += n_steps_executed * self.dt_sec
+            
+            step_idx_global += n_steps_executed
             decision_id += 1
             total_agent_decisions += 1
             self.prev_dynamic_system_state_dict = self.dynamic_system_base.get_dynamic_system_state('raw')
@@ -197,7 +204,7 @@ class SimulationManager:
         if save_period and (episode_id + 1) % save_period == 0:
             self.result_handler.save_agent_state_learn_dict(self.agent_base.get_agent_state_learn_dict(), episode_id)
     
-    def _run_interval(self, decision_id, current_time_sec, actions_dict, prev_agent_state, prev_dynamic_system_state_norm_dict):
+    def _run_interval(self, decision_id, current_time_sec, actions_dict, prev_agent_state, prev_dynamic_system_state_norm_dict, remaining_steps):
         """
         Orquesta un intervalo completo y retorna el contenedor canónico.
         
@@ -207,6 +214,7 @@ class SimulationManager:
             actions_dict (dict): Diccionario de acciones del agente
             prev_agent_state: Estado previo del agente
             prev_dynamic_system_state_dict: Estado previo del sistema dinámico
+            remaining_steps (int): Pasos restantes en el episodio
             
         Returns:
             tuple: (interval_data)
@@ -216,7 +224,7 @@ class SimulationManager:
         n_steps_executed = 0
         
         # 2. Ejecutar el step-loop del intervalo
-        for step in range(self.steps_per_interval):
+        for step in range(min(self.steps_per_interval, remaining_steps)):
             n_steps_executed += 1
             
             # 2.1. Calcular acción total de control
