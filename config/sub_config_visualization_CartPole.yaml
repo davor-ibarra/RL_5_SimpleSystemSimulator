@@ -244,7 +244,7 @@ plots:
       filter_termination_reason: null # Optional: filter episodes before aggregating data
   # --- Example Heatmap (Angle vs Angular Velocity) ---
   - type: heatmap
-    enabled: true
+    enabled: false
     name: "heatmap_angle_vs_anglevel"
     source: detailed
     x_variable: pendulum_angle_raw
@@ -532,7 +532,7 @@ plots:
       filter_termination_reason: ['stabilization_success']
   # --- Example Heatmap (Time vs u_total) ---
   - type: heatmap
-    enabled: true
+    enabled: false
     name: "heatmap_t_vs_ut"
     source: detailed # Use data from the list of all episode details
     x_variable: t_sec

@@ -14,7 +14,15 @@ data_summary:
     final_kd_pendulum_angle,
     final_kp_cart_position,
     final_ki_cart_position,
-    final_kd_cart_position
+    final_kd_cart_position,
+    final_pendulum_angle_raw,
+    final_pendulum_velocity_raw,
+    final_cart_position_raw,
+    final_cart_velocity_raw,
+    final_pendulum_angle_normalized,
+    final_pendulum_velocity_normalized,
+    final_cart_position_normalized,
+    final_cart_velocity_normalized
   ]
   data_stats: [
     pendulum_angle_raw,

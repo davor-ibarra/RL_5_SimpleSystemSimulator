@@ -233,6 +233,16 @@ episode_data:
     q_value_kd_cart_position: []
 
   end_episode_data:
+    
+    final_pendulum_angle_raw: 0.0
+    final_pendulum_velocity_raw: 0.0
+    final_cart_position_raw: 0.0
+    final_cart_velocity_raw: 0.0
+    final_pendulum_angle_normalized: 0.0
+    final_pendulum_velocity_normalized: 0.0
+    final_cart_position_normalized: 0.0
+    final_cart_velocity_normalized: 0.0
+
     end_terminated: false
     end_termination_reason: ""
 

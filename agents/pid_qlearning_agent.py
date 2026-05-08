@@ -365,6 +365,7 @@ class PIDQLearningAgent:
             dict: Estado serializable con:
                 - q_tables: {agent_name: Q-table}
                 - visit_counts: {agent_name: matriz de visitas}
+                - metadata de discretizacion para persistencia tabular
         """
         # Q-tables y visit_counts en formato serializable (listas)
         q_tables_matrix = {}
@@ -377,4 +378,8 @@ class PIDQLearningAgent:
         return {
             'q_tables': q_tables_matrix,
             'visit_counts': visit_counts_matrix,
+            'agent_state_vars': self.agent_state_vars,
+            'var_mins': self.var_mins,
+            'var_steps': self.var_steps,
+            'action_space': self.action_space,
             }

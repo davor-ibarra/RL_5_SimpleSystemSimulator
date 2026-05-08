@@ -16,6 +16,7 @@ Outputs:
 
 import os
 import json
+import numpy as np
 from utils.numpy_encoder import NumpyEncoder, sanitize_for_json
 from utils.data_processing import calculate_episode_summary
 
@@ -168,7 +169,7 @@ class ResultHandler:
     def save_agent_state_learn_dict(self, state_dict, episode_id):
         """
         Guarda estado del agente (Q-tables, visit counts) en Excel.
-        Crea una hoja por agente con sus tablas Q y de visitas.
+        Crea una hoja por agente con Q-values y visitas por accion.
         
         Args:
             state_dict (dict): Estado serializable del agente (q_tables, visit_counts)
@@ -181,26 +182,56 @@ class ResultHandler:
         
         q_tables = state_dict['q_tables']
         visit_counts = state_dict['visit_counts']
+        agent_state_vars = state_dict['agent_state_vars']
+        var_mins = state_dict['var_mins']
+        var_steps = state_dict['var_steps']
+        action_space = state_dict['action_space']
         
         with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
             for agent_name in q_tables:
-                q_table_data = q_tables[agent_name]
-                visit_data = visit_counts[agent_name]
+                q_table_data = np.asarray(q_tables[agent_name])
+                visit_data = np.asarray(visit_counts[agent_name])
                 
-                # Convertir a DataFrames
-                df_q = pd.DataFrame(q_table_data)
-                df_visits = pd.DataFrame(visit_data)
-                
-                # Escribir Q-Table con título
-                pd.DataFrame(["Q-Table"]).to_excel(writer, sheet_name=agent_name, startrow=0, startcol=0, index=False, header=False)
-                df_q.to_excel(writer, sheet_name=agent_name, startrow=1, startcol=0)
-                
-                # Determinar posición para Visit Counts
-                start_row_visits = len(df_q) + 4
-                
-                # Escribir Visit Counts con título
-                pd.DataFrame(["Visit Counts"]).to_excel(writer, sheet_name=agent_name, startrow=start_row_visits, startcol=0, index=False, header=False)
-                df_visits.to_excel(writer, sheet_name=agent_name, startrow=start_row_visits + 1, startcol=0)
+                state_vars = agent_state_vars[agent_name]
+                df_agent = self._build_agent_state_table(
+                    q_table_data, visit_data, state_vars, var_mins, var_steps, action_space
+                )
+                df_agent.to_excel(writer, sheet_name=agent_name, index=False)
+    
+    def _build_agent_state_table(self, q_table_data, visit_data, state_vars, var_mins, var_steps, action_space):
+        """
+        Convierte Q-tables N-dimensionales a una tabla plana.
+        La ultima dimension se interpreta como accion.
+        """
+        state_shape = q_table_data.shape[:-1]
+        n_actions = q_table_data.shape[-1]
+        state_axes = []
+        
+        for axis_idx, var_name in enumerate(state_vars):
+            values = var_mins[var_name] + var_steps[var_name] * np.arange(state_shape[axis_idx])
+            state_axes.append(values)
+        
+        state_grid = np.meshgrid(*state_axes, indexing='ij')
+        q_values = q_table_data.reshape(-1, n_actions)
+        visit_values = visit_data.reshape(-1, n_actions)
+        
+        table_data = {}
+        for axis_idx, var_name in enumerate(state_vars):
+            table_data[var_name] = state_grid[axis_idx].reshape(-1)
+        
+        for action_idx in range(n_actions):
+            action_label = self._get_action_label(action_space, action_idx)
+            table_data[f'q_{action_label}'] = q_values[:, action_idx]
+        
+        for action_idx in range(n_actions):
+            action_label = self._get_action_label(action_space, action_idx)
+            table_data[f'visits_{action_label}'] = visit_values[:, action_idx]
+        
+        return pd.DataFrame(table_data)
+    
+    def _get_action_label(self, action_space, action_idx):
+        action_name = action_space.get(action_idx, action_space.get(str(action_idx), action_idx))
+        return f'action_{action_idx}_{action_name}'
     
     def finalize_run(self):
         """

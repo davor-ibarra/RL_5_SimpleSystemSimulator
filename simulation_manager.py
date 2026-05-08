@@ -192,6 +192,14 @@ class SimulationManager:
         end_episode_data = {
             'end_terminated': terminated,
             'end_termination_reason': self.termination_reason,
+            'final_pendulum_angle_raw': self.prev_dynamic_system_state_dict['pendulum_angle_raw'],
+            'final_pendulum_velocity_raw': self.prev_dynamic_system_state_dict['pendulum_velocity_raw'],
+            'final_cart_position_raw': self.prev_dynamic_system_state_dict['cart_position_raw'],
+            'final_cart_velocity_raw': self.prev_dynamic_system_state_dict['cart_velocity_raw'],
+            'final_pendulum_angle_normalized': self.prev_dynamic_system_state_dict['pendulum_angle_normalized'],
+            'final_pendulum_velocity_normalized': self.prev_dynamic_system_state_dict['pendulum_velocity_normalized'],
+            'final_cart_position_normalized': self.prev_dynamic_system_state_dict['cart_position_normalized'],
+            'final_cart_velocity_normalized': self.prev_dynamic_system_state_dict['cart_velocity_normalized'],
             'total_reward': self.total_reward,
             'total_agent_decisions': total_agent_decisions
         }
