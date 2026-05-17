@@ -61,6 +61,27 @@ episode_data:
     #prev_u_eff_cart_position: []
     delta_u_eff_pendulum_angle: []
     delta_u_eff_cart_position: []
+
+    control_action_eff_pendulum_angle: []
+    prev_control_action_eff_pendulum_angle: []
+    delta_control_action_eff_pendulum_angle: []
+    u_alloc_pendulum_angle: []
+    prev_u_alloc_pendulum_angle: []
+    delta_u_alloc_pendulum_angle: []
+    u_conflict_pendulum_angle: []
+    prev_u_conflict_pendulum_angle: []
+    delta_u_conflict_pendulum_angle: []
+
+    control_action_eff_cart_position: []
+    prev_control_action_eff_cart_position: []
+    delta_control_action_eff_cart_position: []
+    u_alloc_cart_position: []
+    prev_u_alloc_cart_position: []
+    delta_u_alloc_cart_position: []
+    u_conflict_cart_position: []
+    prev_u_conflict_cart_position: []
+    delta_u_conflict_cart_position: []
+
     kp_pendulum_angle: []
     kp_cart_position: []
     ki_pendulum_angle: []
@@ -98,8 +119,8 @@ episode_data:
     #L_delta_e_cart_position: []
 
     # --- gating mechanism ---
-    #principal_gate_L_e_pendulum_angle: []
-    #principal_gate_L_e_cart_position: []
+    principal_gate_L_e_pendulum_angle: []
+    principal_gate_L_e_cart_position: []
     principal_gate_L_edot_pendulum_angle: []
     principal_gate_L_edot_cart_position: []
     principal_gate_L_u_pendulum_angle: []
@@ -179,6 +200,10 @@ episode_data:
     #extra_bonus_goal_cart_position: []
     #extra_bonus_band_pendulum_angle: []
     #extra_bonus_band_cart_position: []
+
+    #extra_bonus_band_gate_pendulum_angle: []
+    #extra_bonus_band_gate_cart_position: []
+
     #extra_conditional_dynamic_penalty_pendulum_angle: []
     #extra_conditional_dynamic_penalty_cart_position: []
     #extra_conditional_dynamic_incentive_pendulum_angle: []

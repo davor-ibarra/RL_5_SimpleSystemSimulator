@@ -18,6 +18,12 @@ class PIDController:
     - integral_error_<var_obj>
     - control_action_<var_obj>
     - delta_control_action_<var_obj>
+    - control_action_eff_<var_obj>
+    - delta_control_action_eff_<var_obj>
+    - u_alloc_<var_obj>
+    - delta_u_alloc_<var_obj>
+    - u_conflict_<var_obj>
+    - delta_u_conflict_<var_obj>
     - is_saturated_<var_obj>
     - saturation_proportion_<var_obj>
     """
@@ -65,6 +71,17 @@ class PIDController:
         # Estado de saturación (será actualizado por controller_base)
         self.is_saturated = False
         self.saturation_proportion = 0.0
+        self.control_action_eff = 0.0
+        self.prev_control_action_eff = 0.0
+        self.delta_control_action_eff = 0.0
+        self.u_alloc = 0.0
+        self.prev_u_alloc = 0.0
+        self.delta_u_alloc = 0.0
+        self.u_conflict = 0.0
+        self.prev_u_conflict = 0.0
+        self.delta_u_conflict = 0.0
+
+        # Alias legacy: mantiene compatibilidad con configs y resultados previos
         self.u_eff = 0.0
         self.prev_u_eff = 0.0
         self.delta_u_eff = 0.0
@@ -114,6 +131,15 @@ class PIDController:
         self.control_action = 0.0
         self.prev_control_action = 0.0
         self.delta_control_action = 0.0
+        self.control_action_eff = 0.0
+        self.prev_control_action_eff = 0.0
+        self.delta_control_action_eff = 0.0
+        self.u_alloc = 0.0
+        self.prev_u_alloc = 0.0
+        self.delta_u_alloc = 0.0
+        self.u_conflict = 0.0
+        self.prev_u_conflict = 0.0
+        self.delta_u_conflict = 0.0
         self.u_eff = 0.0
         self.prev_u_eff = 0.0
         self.delta_u_eff = 0.0
@@ -209,27 +235,36 @@ class PIDController:
         """
         return {'kp': self.kp, 'ki': self.ki, 'kd': self.kd}
 
-    def return_state_to_controller(self, u_eff, is_saturated_global, dt_sec):
+    def return_state_to_controller(self, control_action_eff, u_alloc, u_conflict, is_saturated_global, dt_sec):
         """
-        Recibe u_eff calculado por controller_base y actualiza estado interno.
-        
+        Recibe las señales calculadas por ControllerBase y actualiza estado interno.
+
         Args:
-            u_eff (float): Acción de control efectiva (ya calculada por controller_base)
-            is_saturated_global (bool): Si el actuador global está saturado
-            dt_sec (float): Paso de tiempo
+            control_action_eff (float): Acción local escalada por saturación global.
+            u_alloc (float): Porción física asignada desde u_total.
+            u_conflict (float): Demanda local opuesta al signo de u_total.
+            is_saturated_global (bool): Si el actuador global está saturado.
+            dt_sec (float): Paso de tiempo.
         """
         self.is_saturated = is_saturated_global
-        
-        # Actualizar u_eff y delta
+
+        self.prev_control_action_eff = self.control_action_eff
+        self.control_action_eff = control_action_eff
+        self.delta_control_action_eff = self.control_action_eff - self.prev_control_action_eff
+
+        self.prev_u_alloc = self.u_alloc
+        self.u_alloc = u_alloc
+        self.delta_u_alloc = self.u_alloc - self.prev_u_alloc
+
+        self.prev_u_conflict = self.u_conflict
+        self.u_conflict = u_conflict
+        self.delta_u_conflict = self.u_conflict - self.prev_u_conflict
+
         self.prev_u_eff = self.u_eff
-        self.u_eff = u_eff
+        self.u_eff = self.control_action_eff
         self.delta_u_eff = self.u_eff - self.prev_u_eff
 
-        if self.control_action != 0.0:
-            self.saturation_proportion = abs(self.control_action - self.u_eff) / abs(self.control_action)
-        else:
-            self.saturation_proportion = 0.0
-    
+
     def get_controller_record(self):
         """
         Expone el estado interno del controlador.
@@ -246,6 +281,15 @@ class PIDController:
             f'control_action_{self.var_obj}': self.control_action,
             f'prev_control_action_{self.var_obj}': self.prev_control_action,
             f'delta_control_action_{self.var_obj}': self.delta_control_action,
+            f'control_action_eff_{self.var_obj}': self.control_action_eff,
+            f'prev_control_action_eff_{self.var_obj}': self.prev_control_action_eff,
+            f'delta_control_action_eff_{self.var_obj}': self.delta_control_action_eff,
+            f'u_alloc_{self.var_obj}': self.u_alloc,
+            f'prev_u_alloc_{self.var_obj}': self.prev_u_alloc,
+            f'delta_u_alloc_{self.var_obj}': self.delta_u_alloc,
+            f'u_conflict_{self.var_obj}': self.u_conflict,
+            f'prev_u_conflict_{self.var_obj}': self.prev_u_conflict,
+            f'delta_u_conflict_{self.var_obj}': self.delta_u_conflict,
             f'u_eff_{self.var_obj}': self.u_eff,
             f'prev_u_eff_{self.var_obj}': self.prev_u_eff,
             f'delta_u_eff_{self.var_obj}': self.delta_u_eff,

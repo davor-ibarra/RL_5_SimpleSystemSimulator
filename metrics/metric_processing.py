@@ -108,8 +108,8 @@ class MetricProcessing:
             'e': 'error',
             'edot': 'derivative_error',
             'I': 'integral_error',
-            'u': 'u_eff',
-            'delta_u': 'delta_u_eff'
+            'u': 'u_alloc',
+            'delta_u': 'delta_u_alloc'
         }
         norm_params = self.normalization_config['params']
         
@@ -293,22 +293,26 @@ class MetricProcessing:
         if not columnar_data:
             return extras
             
+        signal_prefixes = [
+            'error',
+            'derivative_error',
+            'integral_error',
+            'control_action',
+            'delta_control_action',
+            'control_action_eff',
+            'delta_control_action_eff',
+            'u_alloc',
+            'delta_u_alloc',
+            'u_conflict',
+            'delta_u_conflict',
+            'u_eff',
+            'delta_u_eff'
+        ]
+
         for var_obj in self.var_obj_to_controller:
-            # Extraer error crudo (señal principal para bonus/penalty)
-            error_key = f'error_{var_obj}'
-            extras[error_key] = columnar_data[error_key]
-            
-            # Extraer u_eff_ crudo (para penalty de esfuerzo)
-            action_key = f'u_eff_{var_obj}'
-            extras[action_key] = columnar_data[action_key]
-            
-            # Extraer control_action_ crudo (acción teórica de control)
-            ctrl_key = f'control_action_{var_obj}'
-            extras[ctrl_key] = columnar_data[ctrl_key]
-            
-            # Extraer delta de accion de control (para penalties por variabilidad)
-            delta_ctrl_key = f'delta_control_action_{var_obj}'
-            extras[delta_ctrl_key] = columnar_data[delta_ctrl_key]
+            for signal_prefix in signal_prefixes:
+                signal_key = f'{signal_prefix}_{var_obj}'
+                extras[signal_key] = columnar_data[signal_key]
             
         # Exponer variables crudas del sistema (e.g. pendulum_velocity_raw)
         # para shaping firmado tipo notebook sin acoplarlas al reward principal.

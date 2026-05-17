@@ -94,7 +94,7 @@ agent_base:
     learning_rate: 0.2
     learning_rate_decay:
       enabled: true
-      decay_factor: 0.99925                                    # Decay factor per episode | 0.99925 (4000) | 0.999625604 (8000) | 0.9997005 (10000)
+      decay_factor: 0.99884937                                    # Decay factor per episode | 0.99925 (4000) | 0.999625604 (8000) | 0.9997005 (10000)
       learning_rate_min: 0.01                                  # Minimum learning rate
   # Agent Configuration
   agent_config:
@@ -156,13 +156,13 @@ reward_base:
             e: {method: rms, range: [-0.35, 0.35]}         # Error en espacio normalizado [-1, 1]
             edot: {method: rms, range: [-1.2, 1.2]}    # Derivada error normalizado (conservador)
             I: {method: rms, range: [-2.0, 2.0]}         # Integral error normalizado (acumulación)
-            u: {method: rms, range: [-2.0, 2.0]}         # Acción de control [-1, 1]
+            u: {method: rms, range: [-1.0, 1.0]}         # Acción de control [-1, 1]
             #delta_u: {method: mean_squared, range: [-0.1, 0.1]}   # Variación acción [-2, 2] máximo
           cart_position:
             e: {method: rms, range: [-0.3, 0.3]}         # Error en espacio normalizado [-1, 1]
             edot: {method: rms, range: [-0.25, 0.25]}    # Derivada error normalizado (conservador)
             I: {method: rms, range: [-0.7, 0.7]}         # Integral error normalizado (acumulación)
-            u: {method: rms, range: [-2.0, 2.0]}         # Acción de control [-1, 1]
+            u: {method: rms, range: [-1.0, 1.0]}         # Acción de control [-1, 1]
             #delta_u: {method: mean_squared, range: [-0.1, 0.1]}   # Variación acción [-2, 2] máximo
           global_vars:
             u_total:       {method: mean_squared ,range: [-1, 1]}
@@ -183,9 +183,9 @@ reward_base:
       weighted_exponential_params:
         features:
           L_e:       {weight: 0.65, scaled: 5.0, setpoint: 0.0}
-          L_edot:    {weight: 0.32, scaled: 2.5, setpoint: 0.0}
+          L_edot:    {weight: 0.3, scaled: 2.5, setpoint: 0.0}
           L_I:       {weight: 0.0,  scaled: 1.0, setpoint: 0.0}
-          L_u:       {weight: 0.03, scaled: 1.0, setpoint: 0.0}
+          L_u:       {weight: 0.05, scaled: 1.0, setpoint: 0.0}
         feature_gates:
           L_e:
             enabled: false
@@ -195,7 +195,7 @@ reward_base:
             setpoint: 0.0
             per_var:
               pendulum_angle: {scaled: 1.0, min_factor: 1.0, max_factor: 1.0}
-              cart_position:  {scaled: 0.45, min_factor: 0.35, max_factor: 1.0, invert: false}
+              cart_position:  {scaled: 1.0, min_factor: 0.2, max_factor: 1.0, invert: false}
           L_edot:
             enabled: true
             type: exp
@@ -203,8 +203,8 @@ reward_base:
             use_sqrt: false
             setpoint: 0.0
             per_var:
-              pendulum_angle: {scaled: 0.35, min_factor: 0.3, max_factor: 1.0}
-              cart_position:  {scaled: 0.3, min_factor: 0.5, max_factor: 1.0, invert: false}
+              pendulum_angle: {scaled: 0.25, min_factor: 0.0, max_factor: 1.0}
+              cart_position:  {scaled: 0.25, min_factor: 0.0, max_factor: 1.0, invert: false}
           L_u:
             enabled: true
             type: exp
@@ -213,7 +213,33 @@ reward_base:
             setpoint: 0.0
             per_var:
               pendulum_angle: {scaled: 0.25, min_factor: 0.0, max_factor: 1.0}
-              cart_position:  {scaled: 0.25, min_factor: 0.0, max_factor: 0.5}
+              cart_position:  {scaled: 0.25, min_factor: 0.0, max_factor: 1.0}
+    # --- Coordination Reward ---
+    coordination_reward:
+      enabled: true
+      reward_name: coordination_global_progress
+      module_path: rewards.coordination_reward_handler
+      class_name: CoordinationRewardHandler
+      reward_mode: task_progress_credit_assignment                    #(decorativo) se podría escalar a otras configuraciones
+      assign_mode: per_var                                            #(decorativo) se podría escalar a otras configuraciones
+      global_weight: 12
+      potential_features: [L_e, L_edot]
+      potential_weights:
+        L_e:
+          pendulum_angle: 0.7
+          cart_position: 0.3
+        L_edot:
+          pendulum_angle: 0.5
+          cart_position: 0.5
+      progress_positive_only: true                                    #*Si llegara a ser False requiere de implementar un "progress_clip_min"
+      progress_clip_max: 0.02
+      contribution_error_signal: error_{var_obj}
+      contribution_effort_signal: u_alloc_{var_obj}
+      correction_signs:
+        pendulum_angle: 1.0
+        cart_position: 1.0
+      epsilon_credit: 1.0e-6
+      credit_reduction_mode: average
     # --- Extra Rewards ---
     extra_rewards:
       enabled: false
@@ -253,12 +279,16 @@ reward_base:
           enabled: false
           per_step_band_bonus: 0.002           # Bono por cada dt dentro de la zona ampliada
           max_total_band_bonus:             # Tope máximo acumulado por episodio y por lazo
-            pendulum_angle: 1.5
-            cart_position: 1.5
+            pendulum_angle: 1.0
+            cart_position: 1.0
           ranges: {
                 error_pendulum_angle: [-0.05, 0.05],
                 error_cart_position: [-0.03, 0.03]
                 }
+          gates:
+            cart_position:
+              - {source: L_e_pendulum_angle, type: exp, scaled: 0.12, setpoint: 0.0, min_factor: 0.0, max_factor: 1.0, invert: false}
+              - {source: L_edot_pendulum_angle, type: exp, scaled: 0.15, setpoint: 0.0, min_factor: 0.0, max_factor: 1.0, invert: false}
       # Conditional Approach
       conditional_approach:
         dynamic_penalty:
@@ -286,7 +316,7 @@ reward_base:
                                 assign_to: 'pendulum_angle',
                                 reward_mode: 'capture_directional_effort',
                                 x: 'error_pendulum_angle',
-                                u: 'u_eff_pendulum_angle',
+                                u: 'control_action_eff_pendulum_angle',
                                 x_sp: 0.0,
                                 capture_threshold: 0.08,
                                 direction_sign: 1.0,
@@ -294,32 +324,6 @@ reward_base:
                                 alignment_strength: 4.0,
                                 weight: 0.06
                               }
-    # --- Coordination Reward ---
-    coordination_reward:
-      enabled: true
-      reward_name: coordination_global_progress
-      module_path: rewards.coordination_reward_handler
-      class_name: CoordinationRewardHandler
-      reward_mode: task_progress_credit_assignment                    #(decorativo) se podría escalar a otras configuraciones
-      assign_mode: per_var                                            #(decorativo) se podría escalar a otras configuraciones
-      global_weight: 8
-      potential_features: [L_e, L_edot]
-      potential_weights:
-        L_e:
-          pendulum_angle: 0.4
-          cart_position: 1.5
-        L_edot:
-          pendulum_angle: 0.2
-          cart_position: 0.8
-      progress_positive_only: true                                    #*Si llegara a ser False requiere de implementar un "progress_clip_min"
-      progress_clip_max: 0.02
-      contribution_error_signal: error_{var_obj}
-      contribution_effort_signal: u_eff_{var_obj}
-      correction_signs:
-        pendulum_angle: 1.0
-        cart_position: 1.0
-      epsilon_credit: 1.0e-6
-      credit_reduction_mode: average
 metrics_setup:
   # --- 1. System measure ----
   system_measure:

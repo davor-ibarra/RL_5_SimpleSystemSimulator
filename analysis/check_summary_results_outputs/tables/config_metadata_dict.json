@@ -1,0 +1,2374 @@
+{
+  "20260512_1046_POI2": {
+    "run_id": "20260512_1046_POI2",
+    "metadata_path": "C:\\Users\\davor\\Escritorio\\DOCTORADO\\Tesis\\RL_5_SimpleSystemSimulator\\results_history_CartPole\\cart_pole\\20260512_1046_POI2\\metadata.json",
+    "config_main": {
+      "simulation": {
+        "n_episodes": 5000,
+        "episode_duration_sec": 5.0,
+        "dt_sec": 0.001,
+        "decision_interval_sec": 0.02
+      },
+      "dynamic_system": {
+        "system_name": "cart_pole",
+        "module_path": "dynamic_system.cart_pole_dynamic_system",
+        "class_name": "CartPoleDynamicSystem",
+        "initial_conditions": {
+          "cart_position": 0.0,
+          "cart_velocity": 0.0,
+          "pendulum_angle": 0.157,
+          "pendulum_velocity": 0.0
+        },
+        "params": {
+          "mass_cart_kg": 5.0,
+          "mass_pendulum_kg": 1.0,
+          "l": 1.0,
+          "g": 9.81,
+          "cart_friction_coef": 0.0,
+          "pivot_friction_coef": 0.0,
+          "max_torque_nm": 2.0,
+          "gear_ratio": 1.0,
+          "pinion_radius_m": 0.05
+        },
+        "termination_conditions": {
+          "boundary_constraint": {
+            "cart_position": [
+              -5.0,
+              5.0
+            ],
+            "pendulum_angle": [
+              -1.0472,
+              1.0472
+            ]
+          },
+          "stabilization_criteria": {
+            "pendulum_angle": [
+              -0.02,
+              0.02
+            ],
+            "pendulum_velocity": [
+              -0.1,
+              0.1
+            ],
+            "cart_position": [
+              -0.1,
+              0.1
+            ],
+            "cart_velocity": [
+              -0.1,
+              0.1
+            ]
+          }
+        },
+        "reference_system_correction": {
+          "enabled": true,
+          "vars_correction": [
+            "pendulum_angle"
+          ]
+        },
+        "state_normalization": {
+          "enabled": true,
+          "output_limits": [
+            -1.0,
+            1.0
+          ],
+          "ranges_params": {
+            "pendulum_angle": [
+              -1.0472,
+              1.0472
+            ],
+            "pendulum_velocity": [
+              -4.0,
+              4.0
+            ],
+            "cart_position": [
+              -5.0,
+              5.0
+            ],
+            "cart_velocity": [
+              -8.0,
+              8.0
+            ]
+          }
+        }
+      },
+      "controller_base": {
+        "mixing_policy": "sum",
+        "global_actuator_enabled": true,
+        "global_actuator_limits": [
+          -1.0,
+          1.0
+        ],
+        "controllers": {
+          "controller_pendulum_angle": {
+            "controller_name": "controller_pendulum_angle",
+            "module_path": "controllers.pid_controller",
+            "class_name": "PIDController",
+            "initial_conditions": {
+              "kp": 1.0,
+              "ki": 1.0,
+              "kd": 1.0
+            },
+            "params": {
+              "name_objective_var": "pendulum_angle",
+              "setpoint": 0.0,
+              "error_is_setpoint_minus_pv": false,
+              "anti_windup": {
+                "enabled": true,
+                "method": "conditional",
+                "back_calculation_betha": 0.02
+              }
+            }
+          },
+          "controller_cart_position": {
+            "controller_name": "controller_cart_position",
+            "module_path": "controllers.pid_controller",
+            "class_name": "PIDController",
+            "initial_conditions": {
+              "kp": 1.0,
+              "ki": 1.0,
+              "kd": 1.0
+            },
+            "params": {
+              "name_objective_var": "cart_position",
+              "setpoint": 0.0,
+              "error_is_setpoint_minus_pv": true,
+              "anti_windup": {
+                "enabled": true,
+                "method": "conditional",
+                "back_calculation_betha": 0.02
+              }
+            }
+          }
+        }
+      },
+      "agent_base": {
+        "agent_base_name": "pid_qlearning",
+        "module_path": "agents.pid_qlearning_agent",
+        "class_name": "PIDQLearningAgent",
+        "params": {
+          "algorithm": "q-learning",
+          "discount_factor": 0.95,
+          "epsilon": 1.0,
+          "epsilon_decay": {
+            "enabled": true,
+            "decay_factor": 0.998849,
+            "epsilon_min": 0.01
+          },
+          "learning_rate": 0.2,
+          "learning_rate_decay": {
+            "enabled": true,
+            "decay_factor": 0.99925,
+            "learning_rate_min": 0.01
+          }
+        },
+        "agent_config": {
+          "actions": {
+            "actions_space": {
+              "0": "decrease",
+              "1": "maintain",
+              "2": "increase"
+            },
+            "actions_values": {
+              "mode": "universal",
+              "universal_params": {
+                "delta_gain": 0.25
+              },
+              "per_agent_params": {
+                "delta_gain": {
+                  "kp_pendulum_angle": 0.2,
+                  "ki_pendulum_angle": 0.2,
+                  "kd_pendulum_angle": 0.2,
+                  "kp_cart_position": 0.2,
+                  "ki_cart_position": 0.2,
+                  "kd_cart_position": 0.2
+                }
+              }
+            }
+          },
+          "agents": {
+            "kp_pendulum_angle": {
+              "enabled_agent": true,
+              "min": 0.0,
+              "max": 10.0,
+              "state_vars": []
+            },
+            "ki_pendulum_angle": {
+              "enabled_agent": true,
+              "min": 0.0,
+              "max": 10.0,
+              "state_vars": []
+            },
+            "kd_pendulum_angle": {
+              "enabled_agent": true,
+              "min": 0.0,
+              "max": 10.0,
+              "state_vars": []
+            },
+            "kp_cart_position": {
+              "enabled_agent": true,
+              "min": 0.0,
+              "max": 10.0,
+              "state_vars": []
+            },
+            "ki_cart_position": {
+              "enabled_agent": true,
+              "min": 0.0,
+              "max": 10.0,
+              "state_vars": []
+            },
+            "kd_cart_position": {
+              "enabled_agent": true,
+              "min": 0.0,
+              "max": 10.0,
+              "state_vars": []
+            },
+            "pendulum_angle": {
+              "enabled_agent": false,
+              "min": 0.0,
+              "max": 0.5,
+              "bins": 2,
+              "state_vars": []
+            },
+            "cart_position": {
+              "enabled_agent": false,
+              "min": 0.0,
+              "max": 2.0,
+              "bins": 2,
+              "state_vars": []
+            }
+          }
+        }
+      },
+      "reward_base": {
+        "reward_base_name": "reward_base",
+        "module_path": "rewards.reward_calculator_base",
+        "class_name": "RewardCalculatorBase",
+        "reward_config": {
+          "reward_approach": "controller_reward",
+          "individual_reward_params": {
+            "method": "lineal_combination",
+            "lineal_combination_params": {
+              "pendulum_angle": {
+                "kp_pendulum_angle": {
+                  "w_e": 1.0,
+                  "w_edot": 1.0,
+                  "w_I": 1.0,
+                  "w_u": 1.0,
+                  "w_s": 1.0
+                },
+                "ki_pendulum_angle": {
+                  "w_e": 1.0,
+                  "w_edot": 1.0,
+                  "w_I": 1.0,
+                  "w_u": 1.0,
+                  "w_s": 1.0
+                },
+                "kd_pendulum_angle": {
+                  "w_e": 1.0,
+                  "w_edot": 1.0,
+                  "w_I": 1.0,
+                  "w_u": 1.0,
+                  "w_s": 1.0
+                }
+              },
+              "cart_position": {
+                "kp_cart_position": {
+                  "w_e": 1.0,
+                  "w_edot": 1.0,
+                  "w_I": 1.0,
+                  "w_u": 1.0,
+                  "w_s": 1.0
+                },
+                "ki_cart_position": {
+                  "w_e": 1.0,
+                  "w_edot": 1.0,
+                  "w_I": 1.0,
+                  "w_u": 1.0,
+                  "w_s": 1.0
+                },
+                "kd_cart_position": {
+                  "w_e": 1.0,
+                  "w_edot": 1.0,
+                  "w_I": 1.0,
+                  "w_u": 1.0,
+                  "w_s": 1.0
+                }
+              }
+            }
+          }
+        },
+        "reward_calculation": {
+          "metric_processing": {
+            "normalization": {
+              "enabled": true,
+              "output_limits": [
+                0.0,
+                1.0
+              ],
+              "params": {
+                "pendulum_angle": {
+                  "e": {
+                    "method": "rms",
+                    "range": [
+                      -0.35,
+                      0.35
+                    ]
+                  },
+                  "edot": {
+                    "method": "rms",
+                    "range": [
+                      -1.2,
+                      1.2
+                    ]
+                  },
+                  "I": {
+                    "method": "rms",
+                    "range": [
+                      -2.0,
+                      2.0
+                    ]
+                  },
+                  "u": {
+                    "method": "rms",
+                    "range": [
+                      -1.0,
+                      1.0
+                    ]
+                  }
+                },
+                "cart_position": {
+                  "e": {
+                    "method": "rms",
+                    "range": [
+                      -0.3,
+                      0.3
+                    ]
+                  },
+                  "edot": {
+                    "method": "rms",
+                    "range": [
+                      -0.25,
+                      0.25
+                    ]
+                  },
+                  "I": {
+                    "method": "rms",
+                    "range": [
+                      -0.7,
+                      0.7
+                    ]
+                  },
+                  "u": {
+                    "method": "rms",
+                    "range": [
+                      -1.0,
+                      1.0
+                    ]
+                  }
+                },
+                "global_vars": {
+                  "u_total": {
+                    "method": "mean_squared",
+                    "range": [
+                      -1,
+                      1
+                    ]
+                  },
+                  "delta_u_total": {
+                    "method": "mean_squared",
+                    "range": [
+                      -0.05,
+                      0.05
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "principal_reward": {
+            "enabled": true,
+            "reward_principal_name": "lagrange_reward",
+            "module_path": "rewards.lagrange_reward_calculator",
+            "class_name": "LagrangeRewardCalculator",
+            "method": "weighted_exponential",
+            "lineal_combination_params": {
+              "features": {
+                "L_e": {
+                  "weight": 0.35
+                },
+                "L_edot": {
+                  "weight": 0.5
+                },
+                "L_I": {
+                  "weight": 0.0
+                },
+                "L_delta_u": {
+                  "weight": 0.15
+                }
+              }
+            },
+            "weighted_exponential_params": {
+              "features": {
+                "L_e": {
+                  "weight": 0.65,
+                  "scaled": 5.0,
+                  "setpoint": 0.0
+                },
+                "L_edot": {
+                  "weight": 0.3,
+                  "scaled": 2.5,
+                  "setpoint": 0.0
+                },
+                "L_I": {
+                  "weight": 0.0,
+                  "scaled": 1.0,
+                  "setpoint": 0.0
+                },
+                "L_u": {
+                  "weight": 0.05,
+                  "scaled": 1.0,
+                  "setpoint": 0.0
+                }
+              },
+              "feature_gates": {
+                "L_e": {
+                  "enabled": false,
+                  "type": "exp",
+                  "source": "L_e_{var_obj}",
+                  "use_sqrt": false,
+                  "setpoint": 0.0,
+                  "per_var": {
+                    "pendulum_angle": {
+                      "scaled": 1.0,
+                      "min_factor": 1.0,
+                      "max_factor": 1.0
+                    },
+                    "cart_position": {
+                      "scaled": 1.0,
+                      "min_factor": 0.2,
+                      "max_factor": 1.0,
+                      "invert": false
+                    }
+                  }
+                },
+                "L_edot": {
+                  "enabled": true,
+                  "type": "exp",
+                  "source": "L_e_{var_obj}",
+                  "use_sqrt": false,
+                  "setpoint": 0.0,
+                  "per_var": {
+                    "pendulum_angle": {
+                      "scaled": 0.25,
+                      "min_factor": 0.0,
+                      "max_factor": 1.0
+                    },
+                    "cart_position": {
+                      "scaled": 0.25,
+                      "min_factor": 0.0,
+                      "max_factor": 1.0,
+                      "invert": false
+                    }
+                  }
+                },
+                "L_u": {
+                  "enabled": true,
+                  "type": "exp",
+                  "source": "L_e_{var_obj}",
+                  "use_sqrt": false,
+                  "setpoint": 0.0,
+                  "per_var": {
+                    "pendulum_angle": {
+                      "scaled": 0.25,
+                      "min_factor": 0.0,
+                      "max_factor": 1.0
+                    },
+                    "cart_position": {
+                      "scaled": 0.25,
+                      "min_factor": 0.0,
+                      "max_factor": 1.0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "coordination_reward": {
+            "enabled": true,
+            "reward_name": "coordination_global_progress",
+            "module_path": "rewards.coordination_reward_handler",
+            "class_name": "CoordinationRewardHandler",
+            "reward_mode": "task_progress_credit_assignment",
+            "assign_mode": "per_var",
+            "global_weight": 10,
+            "potential_features": [
+              "L_e",
+              "L_edot"
+            ],
+            "potential_weights": {
+              "L_e": {
+                "pendulum_angle": 0.7,
+                "cart_position": 0.3
+              },
+              "L_edot": {
+                "pendulum_angle": 0.5,
+                "cart_position": 0.5
+              }
+            },
+            "progress_positive_only": true,
+            "progress_clip_max": 0.02,
+            "contribution_error_signal": "error_{var_obj}",
+            "contribution_effort_signal": "u_alloc_{var_obj}",
+            "correction_signs": {
+              "pendulum_angle": 1.0,
+              "cart_position": 1.0
+            },
+            "epsilon_credit": 1e-06,
+            "credit_reduction_mode": "average"
+          },
+          "extra_rewards": {
+            "enabled": false,
+            "reward_extra_name": "extra_rewards",
+            "module_path": "rewards.extra_rewards_handler",
+            "class_name": "ExtraRewardsHandler",
+            "penalty_approach": {
+              "penalty_instantaneous_reward": {
+                "enabled": false,
+                "method": "lineal",
+                "type": "fixed",
+                "penalty_lineal_params": {
+                  "time": 200
+                },
+                "penalty_quadratic_params": {
+                  "time": 0.4
+                }
+              },
+              "penalty_delta_var": {
+                "enabled": false,
+                "method": "quadratic",
+                "penalty_delta_var_params": {
+                  "delta_control_action_pendulum_angle": {
+                    "weight": 0.1
+                  }
+                }
+              }
+            },
+            "bonus_approach": {
+              "goal_bonus_reward": {
+                "enabled": false,
+                "success_flags": [
+                  "stabilization_success"
+                ],
+                "method": "decay",
+                "static_params": {
+                  "bonus_value": 1.0
+                },
+                "decay_params": {
+                  "decay_type": "exponential",
+                  "base_value": 2.0,
+                  "min_value": 1.0,
+                  "time_constant_sec": 1.2
+                }
+              },
+              "bandwidth_bonus": {
+                "enabled": false,
+                "per_step_band_bonus": 0.002,
+                "max_total_band_bonus": {
+                  "pendulum_angle": 1.0,
+                  "cart_position": 1.0
+                },
+                "ranges": {
+                  "error_pendulum_angle": [
+                    -0.05,
+                    0.05
+                  ],
+                  "error_cart_position": [
+                    -0.03,
+                    0.03
+                  ]
+                },
+                "gates": {
+                  "cart_position": [
+                    {
+                      "source": "L_e_pendulum_angle",
+                      "type": "exp",
+                      "scaled": 0.12,
+                      "setpoint": 0.0,
+                      "min_factor": 0.0,
+                      "max_factor": 1.0,
+                      "invert": false
+                    },
+                    {
+                      "source": "L_edot_pendulum_angle",
+                      "type": "exp",
+                      "scaled": 0.15,
+                      "setpoint": 0.0,
+                      "min_factor": 0.0,
+                      "max_factor": 1.0,
+                      "invert": false
+                    }
+                  ]
+                }
+              }
+            },
+            "conditional_approach": {
+              "dynamic_penalty": {
+                "enabled": false,
+                "method": "quadratic",
+                "dynamic_penalty_params": {
+                  "control_action_pendulum_angle": {
+                    "assign_to": "pendulum_angle",
+                    "signal": "u_total_raw",
+                    "weight": 0.03,
+                    "condition": {
+                      "type": "exp",
+                      "feature": "error_pendulum_angle",
+                      "scaled": 0.05,
+                      "setpoint": 0.0
+                    }
+                  },
+                  "control_action_cart_position": {
+                    "assign_to": "cart_position",
+                    "signal": "cart_velocity_raw",
+                    "weight": 0.04,
+                    "condition": {
+                      "type": "exp",
+                      "feature": "error_cart_position",
+                      "scaled": 0.08,
+                      "setpoint": 0.0
+                    }
+                  }
+                }
+              },
+              "dynamic_incentive": {
+                "enabled": false,
+                "method": "adaptative",
+                "dynamic_incentive_lineal_params": {},
+                "dynamic_incentive_adapt_params": {
+                  "pendulum_capture_effort": {
+                    "assign_to": "pendulum_angle",
+                    "reward_mode": "capture_directional_effort",
+                    "x": "error_pendulum_angle",
+                    "u": "control_action_eff_pendulum_angle",
+                    "x_sp": 0.0,
+                    "capture_threshold": 0.08,
+                    "direction_sign": 1.0,
+                    "capture_strength": 6.0,
+                    "alignment_strength": 4.0,
+                    "weight": 0.06
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "metrics_setup": {
+        "system_measure": {
+          "entropy": {
+            "regime_control": {
+              "enabled": false,
+              "method": "shanon",
+              "shanon_params": {}
+            },
+            "stacionarity": {
+              "enabled": false,
+              "method": "shanon",
+              "shanon_params": {}
+            }
+          },
+          "risk_measures": {
+            "security_control": {
+              "enabled": false,
+              "type": "cvar",
+              "alpha": 0.95,
+              "vars": [
+                "L_e_total",
+                "L_u_total",
+                "L_sat_total"
+              ]
+            }
+          }
+        },
+        "stability_measure": {
+          "type": "exp_decay_metric",
+          "exp_decay_metric_params": {
+            "features": {
+              "pendulum_angle": {
+                "weight": 0.3,
+                "scaled": 0.1
+              },
+              "pendulum_velocity": {
+                "weight": 0.15,
+                "scaled": 0.5
+              },
+              "cart_position": {
+                "weight": 0.4,
+                "scaled": 0.25,
+                "setpoint": 0.0
+              },
+              "cart_velocity": {
+                "weight": 0.15,
+                "scaled": 0.5
+              }
+            }
+          },
+          "ira_zscore_metric_params": {
+            "lambda_factor": 1.0,
+            "epsilon_zscore_denominator": 1e-06,
+            "adaptive_stats": {
+              "enabled": false,
+              "min_episode": 3000,
+              "min_sigma": 0.0001
+            },
+            "features": {
+              "pendulum_angle": {
+                "weight": 0.1,
+                "mu": 0.0,
+                "sigma": 0.05
+              },
+              "pendulum_velocity": {
+                "weight": 0.1,
+                "mu": 0.0,
+                "sigma": 0.05
+              },
+              "cart_position": {
+                "weight": 0.1,
+                "mu": 0.0,
+                "sigma": 0.5
+              },
+              "cart_velocity": {
+                "weight": 0.1,
+                "mu": 0.0,
+                "sigma": 0.0
+              }
+            }
+          }
+        }
+      },
+      "data_handling": {
+        "output_root": "results_history_CartPole",
+        "episodes_per_dataset_chunk": 250,
+        "save_agent_state": true,
+        "agent_state_save_frequency": 2000,
+        "config_file": "sub_config_data_save_CartPole.yaml"
+      },
+      "visualization": {
+        "enabled": true,
+        "config_file": "sub_config_visualization_CartPole.yaml"
+      }
+    },
+    "dynamic_system": {
+      "config_main.dynamic_system.system_name": "cart_pole",
+      "config_main.dynamic_system.module_path": "dynamic_system.cart_pole_dynamic_system",
+      "config_main.dynamic_system.class_name": "CartPoleDynamicSystem",
+      "config_main.dynamic_system.initial_conditions.cart_position": 0.0,
+      "config_main.dynamic_system.initial_conditions.cart_velocity": 0.0,
+      "config_main.dynamic_system.initial_conditions.pendulum_angle": 0.157,
+      "config_main.dynamic_system.initial_conditions.pendulum_velocity": 0.0,
+      "config_main.dynamic_system.params.mass_cart_kg": 5.0,
+      "config_main.dynamic_system.params.mass_pendulum_kg": 1.0,
+      "config_main.dynamic_system.params.l": 1.0,
+      "config_main.dynamic_system.params.g": 9.81,
+      "config_main.dynamic_system.params.cart_friction_coef": 0.0,
+      "config_main.dynamic_system.params.pivot_friction_coef": 0.0,
+      "config_main.dynamic_system.params.max_torque_nm": 2.0,
+      "config_main.dynamic_system.params.gear_ratio": 1.0,
+      "config_main.dynamic_system.params.pinion_radius_m": 0.05,
+      "config_main.dynamic_system.termination_conditions.boundary_constraint.cart_position.0": -5.0,
+      "config_main.dynamic_system.termination_conditions.boundary_constraint.cart_position.1": 5.0,
+      "config_main.dynamic_system.termination_conditions.boundary_constraint.pendulum_angle.0": -1.0472,
+      "config_main.dynamic_system.termination_conditions.boundary_constraint.pendulum_angle.1": 1.0472,
+      "config_main.dynamic_system.termination_conditions.stabilization_criteria.pendulum_angle.0": -0.02,
+      "config_main.dynamic_system.termination_conditions.stabilization_criteria.pendulum_angle.1": 0.02,
+      "config_main.dynamic_system.termination_conditions.stabilization_criteria.pendulum_velocity.0": -0.1,
+      "config_main.dynamic_system.termination_conditions.stabilization_criteria.pendulum_velocity.1": 0.1,
+      "config_main.dynamic_system.termination_conditions.stabilization_criteria.cart_position.0": -0.1,
+      "config_main.dynamic_system.termination_conditions.stabilization_criteria.cart_position.1": 0.1,
+      "config_main.dynamic_system.termination_conditions.stabilization_criteria.cart_velocity.0": -0.1,
+      "config_main.dynamic_system.termination_conditions.stabilization_criteria.cart_velocity.1": 0.1,
+      "config_main.dynamic_system.reference_system_correction.enabled": true,
+      "config_main.dynamic_system.reference_system_correction.vars_correction.0": "pendulum_angle",
+      "config_main.dynamic_system.state_normalization.enabled": true,
+      "config_main.dynamic_system.state_normalization.output_limits.0": -1.0,
+      "config_main.dynamic_system.state_normalization.output_limits.1": 1.0,
+      "config_main.dynamic_system.state_normalization.ranges_params.pendulum_angle.0": -1.0472,
+      "config_main.dynamic_system.state_normalization.ranges_params.pendulum_angle.1": 1.0472,
+      "config_main.dynamic_system.state_normalization.ranges_params.pendulum_velocity.0": -4.0,
+      "config_main.dynamic_system.state_normalization.ranges_params.pendulum_velocity.1": 4.0,
+      "config_main.dynamic_system.state_normalization.ranges_params.cart_position.0": -5.0,
+      "config_main.dynamic_system.state_normalization.ranges_params.cart_position.1": 5.0,
+      "config_main.dynamic_system.state_normalization.ranges_params.cart_velocity.0": -8.0,
+      "config_main.dynamic_system.state_normalization.ranges_params.cart_velocity.1": 8.0,
+      "config_main.metrics_setup.system_measure.entropy.regime_control.enabled": false,
+      "config_main.metrics_setup.system_measure.entropy.regime_control.method": "shanon",
+      "config_main.metrics_setup.system_measure.entropy.stacionarity.enabled": false,
+      "config_main.metrics_setup.system_measure.entropy.stacionarity.method": "shanon",
+      "config_main.metrics_setup.system_measure.risk_measures.security_control.enabled": false,
+      "config_main.metrics_setup.system_measure.risk_measures.security_control.type": "cvar",
+      "config_main.metrics_setup.system_measure.risk_measures.security_control.alpha": 0.95,
+      "config_main.metrics_setup.system_measure.risk_measures.security_control.vars.0": "L_e_total",
+      "config_main.metrics_setup.system_measure.risk_measures.security_control.vars.1": "L_u_total",
+      "config_main.metrics_setup.system_measure.risk_measures.security_control.vars.2": "L_sat_total"
+    },
+    "controller_base": {
+      "config_main.controller_base.mixing_policy": "sum",
+      "config_main.controller_base.global_actuator_enabled": true,
+      "config_main.controller_base.global_actuator_limits.0": -1.0,
+      "config_main.controller_base.global_actuator_limits.1": 1.0,
+      "config_main.controller_base.controllers.controller_pendulum_angle.controller_name": "controller_pendulum_angle",
+      "config_main.controller_base.controllers.controller_pendulum_angle.module_path": "controllers.pid_controller",
+      "config_main.controller_base.controllers.controller_pendulum_angle.class_name": "PIDController",
+      "config_main.controller_base.controllers.controller_pendulum_angle.initial_conditions.kp": 1.0,
+      "config_main.controller_base.controllers.controller_pendulum_angle.initial_conditions.ki": 1.0,
+      "config_main.controller_base.controllers.controller_pendulum_angle.initial_conditions.kd": 1.0,
+      "config_main.controller_base.controllers.controller_pendulum_angle.params.name_objective_var": "pendulum_angle",
+      "config_main.controller_base.controllers.controller_pendulum_angle.params.setpoint": 0.0,
+      "config_main.controller_base.controllers.controller_pendulum_angle.params.error_is_setpoint_minus_pv": false,
+      "config_main.controller_base.controllers.controller_pendulum_angle.params.anti_windup.enabled": true,
+      "config_main.controller_base.controllers.controller_pendulum_angle.params.anti_windup.method": "conditional",
+      "config_main.controller_base.controllers.controller_pendulum_angle.params.anti_windup.back_calculation_betha": 0.02,
+      "config_main.controller_base.controllers.controller_cart_position.controller_name": "controller_cart_position",
+      "config_main.controller_base.controllers.controller_cart_position.module_path": "controllers.pid_controller",
+      "config_main.controller_base.controllers.controller_cart_position.class_name": "PIDController",
+      "config_main.controller_base.controllers.controller_cart_position.initial_conditions.kp": 1.0,
+      "config_main.controller_base.controllers.controller_cart_position.initial_conditions.ki": 1.0,
+      "config_main.controller_base.controllers.controller_cart_position.initial_conditions.kd": 1.0,
+      "config_main.controller_base.controllers.controller_cart_position.params.name_objective_var": "cart_position",
+      "config_main.controller_base.controllers.controller_cart_position.params.setpoint": 0.0,
+      "config_main.controller_base.controllers.controller_cart_position.params.error_is_setpoint_minus_pv": true,
+      "config_main.controller_base.controllers.controller_cart_position.params.anti_windup.enabled": true,
+      "config_main.controller_base.controllers.controller_cart_position.params.anti_windup.method": "conditional",
+      "config_main.controller_base.controllers.controller_cart_position.params.anti_windup.back_calculation_betha": 0.02,
+      "config_main.agent_base.agent_config.actions.actions_values.universal_params.delta_gain": 0.25,
+      "config_main.agent_base.agent_config.actions.actions_values.per_agent_params.delta_gain.kp_pendulum_angle": 0.2,
+      "config_main.agent_base.agent_config.actions.actions_values.per_agent_params.delta_gain.ki_pendulum_angle": 0.2,
+      "config_main.agent_base.agent_config.actions.actions_values.per_agent_params.delta_gain.kd_pendulum_angle": 0.2,
+      "config_main.agent_base.agent_config.actions.actions_values.per_agent_params.delta_gain.kp_cart_position": 0.2,
+      "config_main.agent_base.agent_config.actions.actions_values.per_agent_params.delta_gain.ki_cart_position": 0.2,
+      "config_main.agent_base.agent_config.actions.actions_values.per_agent_params.delta_gain.kd_cart_position": 0.2,
+      "config_main.agent_base.agent_config.agents.kp_pendulum_angle.enabled_agent": true,
+      "config_main.agent_base.agent_config.agents.kp_pendulum_angle.min": 0.0,
+      "config_main.agent_base.agent_config.agents.kp_pendulum_angle.max": 10.0,
+      "config_main.agent_base.agent_config.agents.kp_pendulum_angle.state_vars": [],
+      "config_main.agent_base.agent_config.agents.ki_pendulum_angle.enabled_agent": true,
+      "config_main.agent_base.agent_config.agents.ki_pendulum_angle.min": 0.0,
+      "config_main.agent_base.agent_config.agents.ki_pendulum_angle.max": 10.0,
+      "config_main.agent_base.agent_config.agents.ki_pendulum_angle.state_vars": [],
+      "config_main.agent_base.agent_config.agents.kd_pendulum_angle.enabled_agent": true,
+      "config_main.agent_base.agent_config.agents.kd_pendulum_angle.min": 0.0,
+      "config_main.agent_base.agent_config.agents.kd_pendulum_angle.max": 10.0,
+      "config_main.agent_base.agent_config.agents.kd_pendulum_angle.state_vars": [],
+      "config_main.agent_base.agent_config.agents.kp_cart_position.enabled_agent": true,
+      "config_main.agent_base.agent_config.agents.kp_cart_position.min": 0.0,
+      "config_main.agent_base.agent_config.agents.kp_cart_position.max": 10.0,
+      "config_main.agent_base.agent_config.agents.kp_cart_position.state_vars": [],
+      "config_main.agent_base.agent_config.agents.ki_cart_position.enabled_agent": true,
+      "config_main.agent_base.agent_config.agents.ki_cart_position.min": 0.0,
+      "config_main.agent_base.agent_config.agents.ki_cart_position.max": 10.0,
+      "config_main.agent_base.agent_config.agents.ki_cart_position.state_vars": [],
+      "config_main.agent_base.agent_config.agents.kd_cart_position.enabled_agent": true,
+      "config_main.agent_base.agent_config.agents.kd_cart_position.min": 0.0,
+      "config_main.agent_base.agent_config.agents.kd_cart_position.max": 10.0,
+      "config_main.agent_base.agent_config.agents.kd_cart_position.state_vars": [],
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kp_pendulum_angle.w_e": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kp_pendulum_angle.w_edot": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kp_pendulum_angle.w_I": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kp_pendulum_angle.w_u": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kp_pendulum_angle.w_s": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.ki_pendulum_angle.w_e": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.ki_pendulum_angle.w_edot": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.ki_pendulum_angle.w_I": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.ki_pendulum_angle.w_u": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.ki_pendulum_angle.w_s": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kd_pendulum_angle.w_e": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kd_pendulum_angle.w_edot": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kd_pendulum_angle.w_I": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kd_pendulum_angle.w_u": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kd_pendulum_angle.w_s": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kp_cart_position.w_e": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kp_cart_position.w_edot": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kp_cart_position.w_I": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kp_cart_position.w_u": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kp_cart_position.w_s": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.ki_cart_position.w_e": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.ki_cart_position.w_edot": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.ki_cart_position.w_I": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.ki_cart_position.w_u": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.ki_cart_position.w_s": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kd_cart_position.w_e": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kd_cart_position.w_edot": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kd_cart_position.w_I": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kd_cart_position.w_u": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kd_cart_position.w_s": 1.0
+    },
+    "agent_base": {
+      "config_main.agent_base.agent_base_name": "pid_qlearning",
+      "config_main.agent_base.module_path": "agents.pid_qlearning_agent",
+      "config_main.agent_base.class_name": "PIDQLearningAgent",
+      "config_main.agent_base.params.algorithm": "q-learning",
+      "config_main.agent_base.params.discount_factor": 0.95,
+      "config_main.agent_base.params.epsilon": 1.0,
+      "config_main.agent_base.params.epsilon_decay.enabled": true,
+      "config_main.agent_base.params.epsilon_decay.decay_factor": 0.998849,
+      "config_main.agent_base.params.epsilon_decay.epsilon_min": 0.01,
+      "config_main.agent_base.params.learning_rate": 0.2,
+      "config_main.agent_base.params.learning_rate_decay.enabled": true,
+      "config_main.agent_base.params.learning_rate_decay.decay_factor": 0.99925,
+      "config_main.agent_base.params.learning_rate_decay.learning_rate_min": 0.01,
+      "config_main.agent_base.agent_config.actions.actions_space.0": "decrease",
+      "config_main.agent_base.agent_config.actions.actions_space.1": "maintain",
+      "config_main.agent_base.agent_config.actions.actions_space.2": "increase",
+      "config_main.agent_base.agent_config.actions.actions_values.mode": "universal",
+      "config_main.agent_base.agent_config.actions.actions_values.universal_params.delta_gain": 0.25,
+      "config_main.agent_base.agent_config.actions.actions_values.per_agent_params.delta_gain.kp_pendulum_angle": 0.2,
+      "config_main.agent_base.agent_config.actions.actions_values.per_agent_params.delta_gain.ki_pendulum_angle": 0.2,
+      "config_main.agent_base.agent_config.actions.actions_values.per_agent_params.delta_gain.kd_pendulum_angle": 0.2,
+      "config_main.agent_base.agent_config.actions.actions_values.per_agent_params.delta_gain.kp_cart_position": 0.2,
+      "config_main.agent_base.agent_config.actions.actions_values.per_agent_params.delta_gain.ki_cart_position": 0.2,
+      "config_main.agent_base.agent_config.actions.actions_values.per_agent_params.delta_gain.kd_cart_position": 0.2,
+      "config_main.agent_base.agent_config.agents.kp_pendulum_angle.enabled_agent": true,
+      "config_main.agent_base.agent_config.agents.kp_pendulum_angle.min": 0.0,
+      "config_main.agent_base.agent_config.agents.kp_pendulum_angle.max": 10.0,
+      "config_main.agent_base.agent_config.agents.kp_pendulum_angle.state_vars": [],
+      "config_main.agent_base.agent_config.agents.ki_pendulum_angle.enabled_agent": true,
+      "config_main.agent_base.agent_config.agents.ki_pendulum_angle.min": 0.0,
+      "config_main.agent_base.agent_config.agents.ki_pendulum_angle.max": 10.0,
+      "config_main.agent_base.agent_config.agents.ki_pendulum_angle.state_vars": [],
+      "config_main.agent_base.agent_config.agents.kd_pendulum_angle.enabled_agent": true,
+      "config_main.agent_base.agent_config.agents.kd_pendulum_angle.min": 0.0,
+      "config_main.agent_base.agent_config.agents.kd_pendulum_angle.max": 10.0,
+      "config_main.agent_base.agent_config.agents.kd_pendulum_angle.state_vars": [],
+      "config_main.agent_base.agent_config.agents.kp_cart_position.enabled_agent": true,
+      "config_main.agent_base.agent_config.agents.kp_cart_position.min": 0.0,
+      "config_main.agent_base.agent_config.agents.kp_cart_position.max": 10.0,
+      "config_main.agent_base.agent_config.agents.kp_cart_position.state_vars": [],
+      "config_main.agent_base.agent_config.agents.ki_cart_position.enabled_agent": true,
+      "config_main.agent_base.agent_config.agents.ki_cart_position.min": 0.0,
+      "config_main.agent_base.agent_config.agents.ki_cart_position.max": 10.0,
+      "config_main.agent_base.agent_config.agents.ki_cart_position.state_vars": [],
+      "config_main.agent_base.agent_config.agents.kd_cart_position.enabled_agent": true,
+      "config_main.agent_base.agent_config.agents.kd_cart_position.min": 0.0,
+      "config_main.agent_base.agent_config.agents.kd_cart_position.max": 10.0,
+      "config_main.agent_base.agent_config.agents.kd_cart_position.state_vars": [],
+      "config_main.agent_base.agent_config.agents.pendulum_angle.enabled_agent": false,
+      "config_main.agent_base.agent_config.agents.pendulum_angle.min": 0.0,
+      "config_main.agent_base.agent_config.agents.pendulum_angle.max": 0.5,
+      "config_main.agent_base.agent_config.agents.pendulum_angle.bins": 2,
+      "config_main.agent_base.agent_config.agents.pendulum_angle.state_vars": [],
+      "config_main.agent_base.agent_config.agents.cart_position.enabled_agent": false,
+      "config_main.agent_base.agent_config.agents.cart_position.min": 0.0,
+      "config_main.agent_base.agent_config.agents.cart_position.max": 2.0,
+      "config_main.agent_base.agent_config.agents.cart_position.bins": 2,
+      "config_main.agent_base.agent_config.agents.cart_position.state_vars": [],
+      "config_main.reward_base.reward_calculation.coordination_reward.epsilon_credit": 1e-06,
+      "config_main.metrics_setup.stability_measure.ira_zscore_metric_params.epsilon_zscore_denominator": 1e-06,
+      "config_main.data_handling.save_agent_state": true,
+      "config_main.data_handling.agent_state_save_frequency": 2000
+    },
+    "reward_base": {
+      "config_main.reward_base.reward_base_name": "reward_base",
+      "config_main.reward_base.module_path": "rewards.reward_calculator_base",
+      "config_main.reward_base.class_name": "RewardCalculatorBase",
+      "config_main.reward_base.reward_config.reward_approach": "controller_reward",
+      "config_main.reward_base.reward_config.individual_reward_params.method": "lineal_combination",
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kp_pendulum_angle.w_e": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kp_pendulum_angle.w_edot": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kp_pendulum_angle.w_I": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kp_pendulum_angle.w_u": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kp_pendulum_angle.w_s": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.ki_pendulum_angle.w_e": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.ki_pendulum_angle.w_edot": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.ki_pendulum_angle.w_I": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.ki_pendulum_angle.w_u": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.ki_pendulum_angle.w_s": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kd_pendulum_angle.w_e": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kd_pendulum_angle.w_edot": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kd_pendulum_angle.w_I": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kd_pendulum_angle.w_u": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kd_pendulum_angle.w_s": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kp_cart_position.w_e": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kp_cart_position.w_edot": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kp_cart_position.w_I": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kp_cart_position.w_u": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kp_cart_position.w_s": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.ki_cart_position.w_e": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.ki_cart_position.w_edot": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.ki_cart_position.w_I": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.ki_cart_position.w_u": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.ki_cart_position.w_s": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kd_cart_position.w_e": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kd_cart_position.w_edot": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kd_cart_position.w_I": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kd_cart_position.w_u": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kd_cart_position.w_s": 1.0,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.enabled": true,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.output_limits.0": 0.0,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.output_limits.1": 1.0,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.pendulum_angle.e.method": "rms",
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.pendulum_angle.e.range.0": -0.35,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.pendulum_angle.e.range.1": 0.35,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.pendulum_angle.edot.method": "rms",
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.pendulum_angle.edot.range.0": -1.2,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.pendulum_angle.edot.range.1": 1.2,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.pendulum_angle.I.method": "rms",
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.pendulum_angle.I.range.0": -2.0,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.pendulum_angle.I.range.1": 2.0,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.pendulum_angle.u.method": "rms",
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.pendulum_angle.u.range.0": -1.0,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.pendulum_angle.u.range.1": 1.0,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.cart_position.e.method": "rms",
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.cart_position.e.range.0": -0.3,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.cart_position.e.range.1": 0.3,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.cart_position.edot.method": "rms",
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.cart_position.edot.range.0": -0.25,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.cart_position.edot.range.1": 0.25,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.cart_position.I.method": "rms",
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.cart_position.I.range.0": -0.7,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.cart_position.I.range.1": 0.7,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.cart_position.u.method": "rms",
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.cart_position.u.range.0": -1.0,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.cart_position.u.range.1": 1.0,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.global_vars.u_total.method": "mean_squared",
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.global_vars.u_total.range.0": -1,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.global_vars.u_total.range.1": 1,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.global_vars.delta_u_total.method": "mean_squared",
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.global_vars.delta_u_total.range.0": -0.05,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.global_vars.delta_u_total.range.1": 0.05,
+      "config_main.reward_base.reward_calculation.principal_reward.enabled": true,
+      "config_main.reward_base.reward_calculation.principal_reward.reward_principal_name": "lagrange_reward",
+      "config_main.reward_base.reward_calculation.principal_reward.module_path": "rewards.lagrange_reward_calculator",
+      "config_main.reward_base.reward_calculation.principal_reward.class_name": "LagrangeRewardCalculator",
+      "config_main.reward_base.reward_calculation.principal_reward.method": "weighted_exponential",
+      "config_main.reward_base.reward_calculation.principal_reward.lineal_combination_params.features.L_e.weight": 0.35,
+      "config_main.reward_base.reward_calculation.principal_reward.lineal_combination_params.features.L_edot.weight": 0.5,
+      "config_main.reward_base.reward_calculation.principal_reward.lineal_combination_params.features.L_I.weight": 0.0,
+      "config_main.reward_base.reward_calculation.principal_reward.lineal_combination_params.features.L_delta_u.weight": 0.15,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.features.L_e.weight": 0.65,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.features.L_e.scaled": 5.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.features.L_e.setpoint": 0.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.features.L_edot.weight": 0.3,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.features.L_edot.scaled": 2.5,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.features.L_edot.setpoint": 0.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.features.L_I.weight": 0.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.features.L_I.scaled": 1.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.features.L_I.setpoint": 0.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.features.L_u.weight": 0.05,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.features.L_u.scaled": 1.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.features.L_u.setpoint": 0.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_e.enabled": false,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_e.type": "exp",
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_e.source": "L_e_{var_obj}",
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_e.use_sqrt": false,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_e.setpoint": 0.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_e.per_var.pendulum_angle.scaled": 1.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_e.per_var.pendulum_angle.min_factor": 1.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_e.per_var.pendulum_angle.max_factor": 1.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_e.per_var.cart_position.scaled": 1.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_e.per_var.cart_position.min_factor": 0.2,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_e.per_var.cart_position.max_factor": 1.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_e.per_var.cart_position.invert": false,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_edot.enabled": true,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_edot.type": "exp",
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_edot.source": "L_e_{var_obj}",
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_edot.use_sqrt": false,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_edot.setpoint": 0.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_edot.per_var.pendulum_angle.scaled": 0.25,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_edot.per_var.pendulum_angle.min_factor": 0.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_edot.per_var.pendulum_angle.max_factor": 1.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_edot.per_var.cart_position.scaled": 0.25,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_edot.per_var.cart_position.min_factor": 0.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_edot.per_var.cart_position.max_factor": 1.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_edot.per_var.cart_position.invert": false,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_u.enabled": true,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_u.type": "exp",
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_u.source": "L_e_{var_obj}",
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_u.use_sqrt": false,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_u.setpoint": 0.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_u.per_var.pendulum_angle.scaled": 0.25,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_u.per_var.pendulum_angle.min_factor": 0.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_u.per_var.pendulum_angle.max_factor": 1.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_u.per_var.cart_position.scaled": 0.25,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_u.per_var.cart_position.min_factor": 0.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_u.per_var.cart_position.max_factor": 1.0,
+      "config_main.reward_base.reward_calculation.coordination_reward.enabled": true,
+      "config_main.reward_base.reward_calculation.coordination_reward.reward_name": "coordination_global_progress",
+      "config_main.reward_base.reward_calculation.coordination_reward.module_path": "rewards.coordination_reward_handler",
+      "config_main.reward_base.reward_calculation.coordination_reward.class_name": "CoordinationRewardHandler",
+      "config_main.reward_base.reward_calculation.coordination_reward.reward_mode": "task_progress_credit_assignment",
+      "config_main.reward_base.reward_calculation.coordination_reward.assign_mode": "per_var",
+      "config_main.reward_base.reward_calculation.coordination_reward.global_weight": 10,
+      "config_main.reward_base.reward_calculation.coordination_reward.potential_features.0": "L_e",
+      "config_main.reward_base.reward_calculation.coordination_reward.potential_features.1": "L_edot",
+      "config_main.reward_base.reward_calculation.coordination_reward.potential_weights.L_e.pendulum_angle": 0.7,
+      "config_main.reward_base.reward_calculation.coordination_reward.potential_weights.L_e.cart_position": 0.3,
+      "config_main.reward_base.reward_calculation.coordination_reward.potential_weights.L_edot.pendulum_angle": 0.5,
+      "config_main.reward_base.reward_calculation.coordination_reward.potential_weights.L_edot.cart_position": 0.5,
+      "config_main.reward_base.reward_calculation.coordination_reward.progress_positive_only": true,
+      "config_main.reward_base.reward_calculation.coordination_reward.progress_clip_max": 0.02,
+      "config_main.reward_base.reward_calculation.coordination_reward.contribution_error_signal": "error_{var_obj}",
+      "config_main.reward_base.reward_calculation.coordination_reward.contribution_effort_signal": "u_alloc_{var_obj}",
+      "config_main.reward_base.reward_calculation.coordination_reward.correction_signs.pendulum_angle": 1.0,
+      "config_main.reward_base.reward_calculation.coordination_reward.correction_signs.cart_position": 1.0,
+      "config_main.reward_base.reward_calculation.coordination_reward.epsilon_credit": 1e-06,
+      "config_main.reward_base.reward_calculation.coordination_reward.credit_reduction_mode": "average",
+      "config_main.reward_base.reward_calculation.extra_rewards.enabled": false,
+      "config_main.reward_base.reward_calculation.extra_rewards.reward_extra_name": "extra_rewards",
+      "config_main.reward_base.reward_calculation.extra_rewards.module_path": "rewards.extra_rewards_handler",
+      "config_main.reward_base.reward_calculation.extra_rewards.class_name": "ExtraRewardsHandler",
+      "config_main.reward_base.reward_calculation.extra_rewards.penalty_approach.penalty_instantaneous_reward.enabled": false,
+      "config_main.reward_base.reward_calculation.extra_rewards.penalty_approach.penalty_instantaneous_reward.method": "lineal",
+      "config_main.reward_base.reward_calculation.extra_rewards.penalty_approach.penalty_instantaneous_reward.type": "fixed",
+      "config_main.reward_base.reward_calculation.extra_rewards.penalty_approach.penalty_instantaneous_reward.penalty_lineal_params.time": 200,
+      "config_main.reward_base.reward_calculation.extra_rewards.penalty_approach.penalty_instantaneous_reward.penalty_quadratic_params.time": 0.4,
+      "config_main.reward_base.reward_calculation.extra_rewards.penalty_approach.penalty_delta_var.enabled": false,
+      "config_main.reward_base.reward_calculation.extra_rewards.penalty_approach.penalty_delta_var.method": "quadratic",
+      "config_main.reward_base.reward_calculation.extra_rewards.penalty_approach.penalty_delta_var.penalty_delta_var_params.delta_control_action_pendulum_angle.weight": 0.1,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.goal_bonus_reward.enabled": false,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.goal_bonus_reward.success_flags.0": "stabilization_success",
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.goal_bonus_reward.method": "decay",
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.goal_bonus_reward.static_params.bonus_value": 1.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.goal_bonus_reward.decay_params.decay_type": "exponential",
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.goal_bonus_reward.decay_params.base_value": 2.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.goal_bonus_reward.decay_params.min_value": 1.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.goal_bonus_reward.decay_params.time_constant_sec": 1.2,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.enabled": false,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.per_step_band_bonus": 0.002,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.max_total_band_bonus.pendulum_angle": 1.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.max_total_band_bonus.cart_position": 1.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.ranges.error_pendulum_angle.0": -0.05,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.ranges.error_pendulum_angle.1": 0.05,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.ranges.error_cart_position.0": -0.03,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.ranges.error_cart_position.1": 0.03,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.gates.cart_position.0.source": "L_e_pendulum_angle",
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.gates.cart_position.0.type": "exp",
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.gates.cart_position.0.scaled": 0.12,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.gates.cart_position.0.setpoint": 0.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.gates.cart_position.0.min_factor": 0.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.gates.cart_position.0.max_factor": 1.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.gates.cart_position.0.invert": false,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.gates.cart_position.1.source": "L_edot_pendulum_angle",
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.gates.cart_position.1.type": "exp",
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.gates.cart_position.1.scaled": 0.15,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.gates.cart_position.1.setpoint": 0.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.gates.cart_position.1.min_factor": 0.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.gates.cart_position.1.max_factor": 1.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.gates.cart_position.1.invert": false,
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.enabled": false,
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.method": "quadratic",
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_pendulum_angle.assign_to": "pendulum_angle",
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_pendulum_angle.signal": "u_total_raw",
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_pendulum_angle.weight": 0.03,
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_pendulum_angle.condition.type": "exp",
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_pendulum_angle.condition.feature": "error_pendulum_angle",
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_pendulum_angle.condition.scaled": 0.05,
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_pendulum_angle.condition.setpoint": 0.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_cart_position.assign_to": "cart_position",
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_cart_position.signal": "cart_velocity_raw",
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_cart_position.weight": 0.04,
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_cart_position.condition.type": "exp",
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_cart_position.condition.feature": "error_cart_position",
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_cart_position.condition.scaled": 0.08,
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_cart_position.condition.setpoint": 0.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_incentive.enabled": false,
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_incentive.method": "adaptative",
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_incentive.dynamic_incentive_adapt_params.pendulum_capture_effort.assign_to": "pendulum_angle",
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_incentive.dynamic_incentive_adapt_params.pendulum_capture_effort.reward_mode": "capture_directional_effort",
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_incentive.dynamic_incentive_adapt_params.pendulum_capture_effort.x": "error_pendulum_angle",
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_incentive.dynamic_incentive_adapt_params.pendulum_capture_effort.u": "control_action_eff_pendulum_angle",
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_incentive.dynamic_incentive_adapt_params.pendulum_capture_effort.x_sp": 0.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_incentive.dynamic_incentive_adapt_params.pendulum_capture_effort.capture_threshold": 0.08,
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_incentive.dynamic_incentive_adapt_params.pendulum_capture_effort.direction_sign": 1.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_incentive.dynamic_incentive_adapt_params.pendulum_capture_effort.capture_strength": 6.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_incentive.dynamic_incentive_adapt_params.pendulum_capture_effort.alignment_strength": 4.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_incentive.dynamic_incentive_adapt_params.pendulum_capture_effort.weight": 0.06
+    }
+  },
+  "20260514_0126": {
+    "run_id": "20260514_0126",
+    "metadata_path": "C:\\Users\\davor\\Escritorio\\DOCTORADO\\Tesis\\RL_5_SimpleSystemSimulator\\results_history_CartPole\\cart_pole\\20260514_0126\\metadata.json",
+    "config_main": {
+      "simulation": {
+        "n_episodes": 5000,
+        "episode_duration_sec": 5.0,
+        "dt_sec": 0.001,
+        "decision_interval_sec": 0.02
+      },
+      "dynamic_system": {
+        "system_name": "cart_pole",
+        "module_path": "dynamic_system.cart_pole_dynamic_system",
+        "class_name": "CartPoleDynamicSystem",
+        "initial_conditions": {
+          "cart_position": 0.0,
+          "cart_velocity": 0.0,
+          "pendulum_angle": 0.157,
+          "pendulum_velocity": 0.0
+        },
+        "params": {
+          "mass_cart_kg": 5.0,
+          "mass_pendulum_kg": 1.0,
+          "l": 1.0,
+          "g": 9.81,
+          "cart_friction_coef": 0.0,
+          "pivot_friction_coef": 0.0,
+          "max_torque_nm": 2.0,
+          "gear_ratio": 1.0,
+          "pinion_radius_m": 0.05
+        },
+        "termination_conditions": {
+          "boundary_constraint": {
+            "cart_position": [
+              -5.0,
+              5.0
+            ],
+            "pendulum_angle": [
+              -1.0472,
+              1.0472
+            ]
+          },
+          "stabilization_criteria": {
+            "pendulum_angle": [
+              -0.02,
+              0.02
+            ],
+            "pendulum_velocity": [
+              -0.1,
+              0.1
+            ],
+            "cart_position": [
+              -0.1,
+              0.1
+            ],
+            "cart_velocity": [
+              -0.1,
+              0.1
+            ]
+          }
+        },
+        "reference_system_correction": {
+          "enabled": true,
+          "vars_correction": [
+            "pendulum_angle"
+          ]
+        },
+        "state_normalization": {
+          "enabled": true,
+          "output_limits": [
+            -1.0,
+            1.0
+          ],
+          "ranges_params": {
+            "pendulum_angle": [
+              -1.0472,
+              1.0472
+            ],
+            "pendulum_velocity": [
+              -4.0,
+              4.0
+            ],
+            "cart_position": [
+              -5.0,
+              5.0
+            ],
+            "cart_velocity": [
+              -8.0,
+              8.0
+            ]
+          }
+        }
+      },
+      "controller_base": {
+        "mixing_policy": "sum",
+        "global_actuator_enabled": true,
+        "global_actuator_limits": [
+          -1.0,
+          1.0
+        ],
+        "controllers": {
+          "controller_pendulum_angle": {
+            "controller_name": "controller_pendulum_angle",
+            "module_path": "controllers.pid_controller",
+            "class_name": "PIDController",
+            "initial_conditions": {
+              "kp": 1.0,
+              "ki": 1.0,
+              "kd": 1.0
+            },
+            "params": {
+              "name_objective_var": "pendulum_angle",
+              "setpoint": 0.0,
+              "error_is_setpoint_minus_pv": false,
+              "anti_windup": {
+                "enabled": true,
+                "method": "conditional",
+                "back_calculation_betha": 0.02
+              }
+            }
+          },
+          "controller_cart_position": {
+            "controller_name": "controller_cart_position",
+            "module_path": "controllers.pid_controller",
+            "class_name": "PIDController",
+            "initial_conditions": {
+              "kp": 1.0,
+              "ki": 1.0,
+              "kd": 1.0
+            },
+            "params": {
+              "name_objective_var": "cart_position",
+              "setpoint": 0.0,
+              "error_is_setpoint_minus_pv": true,
+              "anti_windup": {
+                "enabled": true,
+                "method": "conditional",
+                "back_calculation_betha": 0.02
+              }
+            }
+          }
+        }
+      },
+      "agent_base": {
+        "agent_base_name": "pid_qlearning",
+        "module_path": "agents.pid_qlearning_agent",
+        "class_name": "PIDQLearningAgent",
+        "params": {
+          "algorithm": "q-learning",
+          "discount_factor": 0.925,
+          "epsilon": 1.0,
+          "epsilon_decay": {
+            "enabled": true,
+            "decay_factor": 0.998849,
+            "epsilon_min": 0.01
+          },
+          "learning_rate": 0.2,
+          "learning_rate_decay": {
+            "enabled": true,
+            "decay_factor": 0.99925,
+            "learning_rate_min": 0.01
+          }
+        },
+        "agent_config": {
+          "actions": {
+            "actions_space": {
+              "0": "decrease",
+              "1": "maintain",
+              "2": "increase"
+            },
+            "actions_values": {
+              "mode": "universal",
+              "universal_params": {
+                "delta_gain": 0.25
+              },
+              "per_agent_params": {
+                "delta_gain": {
+                  "kp_pendulum_angle": 0.2,
+                  "ki_pendulum_angle": 0.2,
+                  "kd_pendulum_angle": 0.2,
+                  "kp_cart_position": 0.2,
+                  "ki_cart_position": 0.2,
+                  "kd_cart_position": 0.2
+                }
+              }
+            }
+          },
+          "agents": {
+            "kp_pendulum_angle": {
+              "enabled_agent": true,
+              "min": 0.0,
+              "max": 10.0,
+              "state_vars": []
+            },
+            "ki_pendulum_angle": {
+              "enabled_agent": true,
+              "min": 0.0,
+              "max": 10.0,
+              "state_vars": []
+            },
+            "kd_pendulum_angle": {
+              "enabled_agent": true,
+              "min": 0.0,
+              "max": 10.0,
+              "state_vars": []
+            },
+            "kp_cart_position": {
+              "enabled_agent": true,
+              "min": 0.0,
+              "max": 10.0,
+              "state_vars": []
+            },
+            "ki_cart_position": {
+              "enabled_agent": true,
+              "min": 0.0,
+              "max": 10.0,
+              "state_vars": []
+            },
+            "kd_cart_position": {
+              "enabled_agent": true,
+              "min": 0.0,
+              "max": 10.0,
+              "state_vars": []
+            },
+            "pendulum_angle": {
+              "enabled_agent": false,
+              "min": 0.0,
+              "max": 0.5,
+              "bins": 2,
+              "state_vars": []
+            },
+            "cart_position": {
+              "enabled_agent": false,
+              "min": 0.0,
+              "max": 2.0,
+              "bins": 2,
+              "state_vars": []
+            }
+          }
+        }
+      },
+      "reward_base": {
+        "reward_base_name": "reward_base",
+        "module_path": "rewards.reward_calculator_base",
+        "class_name": "RewardCalculatorBase",
+        "reward_config": {
+          "reward_approach": "controller_reward",
+          "individual_reward_params": {
+            "method": "lineal_combination",
+            "lineal_combination_params": {
+              "pendulum_angle": {
+                "kp_pendulum_angle": {
+                  "w_e": 1.0,
+                  "w_edot": 1.0,
+                  "w_I": 1.0,
+                  "w_u": 1.0,
+                  "w_s": 1.0
+                },
+                "ki_pendulum_angle": {
+                  "w_e": 1.0,
+                  "w_edot": 1.0,
+                  "w_I": 1.0,
+                  "w_u": 1.0,
+                  "w_s": 1.0
+                },
+                "kd_pendulum_angle": {
+                  "w_e": 1.0,
+                  "w_edot": 1.0,
+                  "w_I": 1.0,
+                  "w_u": 1.0,
+                  "w_s": 1.0
+                }
+              },
+              "cart_position": {
+                "kp_cart_position": {
+                  "w_e": 1.0,
+                  "w_edot": 1.0,
+                  "w_I": 1.0,
+                  "w_u": 1.0,
+                  "w_s": 1.0
+                },
+                "ki_cart_position": {
+                  "w_e": 1.0,
+                  "w_edot": 1.0,
+                  "w_I": 1.0,
+                  "w_u": 1.0,
+                  "w_s": 1.0
+                },
+                "kd_cart_position": {
+                  "w_e": 1.0,
+                  "w_edot": 1.0,
+                  "w_I": 1.0,
+                  "w_u": 1.0,
+                  "w_s": 1.0
+                }
+              }
+            }
+          }
+        },
+        "reward_calculation": {
+          "metric_processing": {
+            "normalization": {
+              "enabled": true,
+              "output_limits": [
+                0.0,
+                1.0
+              ],
+              "params": {
+                "pendulum_angle": {
+                  "e": {
+                    "method": "rms",
+                    "range": [
+                      -0.35,
+                      0.35
+                    ]
+                  },
+                  "edot": {
+                    "method": "rms",
+                    "range": [
+                      -1.2,
+                      1.2
+                    ]
+                  },
+                  "I": {
+                    "method": "rms",
+                    "range": [
+                      -2.0,
+                      2.0
+                    ]
+                  },
+                  "u": {
+                    "method": "rms",
+                    "range": [
+                      -1.0,
+                      1.0
+                    ]
+                  }
+                },
+                "cart_position": {
+                  "e": {
+                    "method": "rms",
+                    "range": [
+                      -0.3,
+                      0.3
+                    ]
+                  },
+                  "edot": {
+                    "method": "rms",
+                    "range": [
+                      -0.25,
+                      0.25
+                    ]
+                  },
+                  "I": {
+                    "method": "rms",
+                    "range": [
+                      -0.7,
+                      0.7
+                    ]
+                  },
+                  "u": {
+                    "method": "rms",
+                    "range": [
+                      -1.0,
+                      1.0
+                    ]
+                  }
+                },
+                "global_vars": {
+                  "u_total": {
+                    "method": "mean_squared",
+                    "range": [
+                      -1,
+                      1
+                    ]
+                  },
+                  "delta_u_total": {
+                    "method": "mean_squared",
+                    "range": [
+                      -0.05,
+                      0.05
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "principal_reward": {
+            "enabled": true,
+            "reward_principal_name": "lagrange_reward",
+            "module_path": "rewards.lagrange_reward_calculator",
+            "class_name": "LagrangeRewardCalculator",
+            "method": "weighted_exponential",
+            "lineal_combination_params": {
+              "features": {
+                "L_e": {
+                  "weight": 0.35
+                },
+                "L_edot": {
+                  "weight": 0.5
+                },
+                "L_I": {
+                  "weight": 0.0
+                },
+                "L_delta_u": {
+                  "weight": 0.15
+                }
+              }
+            },
+            "weighted_exponential_params": {
+              "features": {
+                "L_e": {
+                  "weight": 0.65,
+                  "scaled": 5.0,
+                  "setpoint": 0.0
+                },
+                "L_edot": {
+                  "weight": 0.3,
+                  "scaled": 2.5,
+                  "setpoint": 0.0
+                },
+                "L_I": {
+                  "weight": 0.0,
+                  "scaled": 1.0,
+                  "setpoint": 0.0
+                },
+                "L_u": {
+                  "weight": 0.05,
+                  "scaled": 1.0,
+                  "setpoint": 0.0
+                }
+              },
+              "feature_gates": {
+                "L_e": {
+                  "enabled": false,
+                  "type": "exp",
+                  "source": "L_e_{var_obj}",
+                  "use_sqrt": false,
+                  "setpoint": 0.0,
+                  "per_var": {
+                    "pendulum_angle": {
+                      "scaled": 1.0,
+                      "min_factor": 1.0,
+                      "max_factor": 1.0
+                    },
+                    "cart_position": {
+                      "scaled": 1.0,
+                      "min_factor": 0.2,
+                      "max_factor": 1.0,
+                      "invert": false
+                    }
+                  }
+                },
+                "L_edot": {
+                  "enabled": true,
+                  "type": "exp",
+                  "source": "L_e_{var_obj}",
+                  "use_sqrt": false,
+                  "setpoint": 0.0,
+                  "per_var": {
+                    "pendulum_angle": {
+                      "scaled": 0.25,
+                      "min_factor": 0.0,
+                      "max_factor": 1.0
+                    },
+                    "cart_position": {
+                      "scaled": 0.25,
+                      "min_factor": 0.0,
+                      "max_factor": 1.0,
+                      "invert": false
+                    }
+                  }
+                },
+                "L_u": {
+                  "enabled": true,
+                  "type": "exp",
+                  "source": "L_e_{var_obj}",
+                  "use_sqrt": false,
+                  "setpoint": 0.0,
+                  "per_var": {
+                    "pendulum_angle": {
+                      "scaled": 0.25,
+                      "min_factor": 0.0,
+                      "max_factor": 1.0
+                    },
+                    "cart_position": {
+                      "scaled": 0.25,
+                      "min_factor": 0.0,
+                      "max_factor": 1.0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "coordination_reward": {
+            "enabled": true,
+            "reward_name": "coordination_global_progress",
+            "module_path": "rewards.coordination_reward_handler",
+            "class_name": "CoordinationRewardHandler",
+            "reward_mode": "task_progress_credit_assignment",
+            "assign_mode": "per_var",
+            "global_weight": 10,
+            "potential_features": [
+              "L_e",
+              "L_edot"
+            ],
+            "potential_weights": {
+              "L_e": {
+                "pendulum_angle": 0.7,
+                "cart_position": 0.3
+              },
+              "L_edot": {
+                "pendulum_angle": 0.5,
+                "cart_position": 0.5
+              }
+            },
+            "progress_positive_only": true,
+            "progress_clip_max": 0.02,
+            "contribution_error_signal": "error_{var_obj}",
+            "contribution_effort_signal": "u_alloc_{var_obj}",
+            "correction_signs": {
+              "pendulum_angle": 1.0,
+              "cart_position": 1.0
+            },
+            "epsilon_credit": 1e-06,
+            "credit_reduction_mode": "average"
+          },
+          "extra_rewards": {
+            "enabled": false,
+            "reward_extra_name": "extra_rewards",
+            "module_path": "rewards.extra_rewards_handler",
+            "class_name": "ExtraRewardsHandler",
+            "penalty_approach": {
+              "penalty_instantaneous_reward": {
+                "enabled": false,
+                "method": "lineal",
+                "type": "fixed",
+                "penalty_lineal_params": {
+                  "time": 200
+                },
+                "penalty_quadratic_params": {
+                  "time": 0.4
+                }
+              },
+              "penalty_delta_var": {
+                "enabled": false,
+                "method": "quadratic",
+                "penalty_delta_var_params": {
+                  "delta_control_action_pendulum_angle": {
+                    "weight": 0.1
+                  }
+                }
+              }
+            },
+            "bonus_approach": {
+              "goal_bonus_reward": {
+                "enabled": false,
+                "success_flags": [
+                  "stabilization_success"
+                ],
+                "method": "decay",
+                "static_params": {
+                  "bonus_value": 1.0
+                },
+                "decay_params": {
+                  "decay_type": "exponential",
+                  "base_value": 2.0,
+                  "min_value": 1.0,
+                  "time_constant_sec": 1.2
+                }
+              },
+              "bandwidth_bonus": {
+                "enabled": false,
+                "per_step_band_bonus": 0.002,
+                "max_total_band_bonus": {
+                  "pendulum_angle": 1.0,
+                  "cart_position": 1.0
+                },
+                "ranges": {
+                  "error_pendulum_angle": [
+                    -0.05,
+                    0.05
+                  ],
+                  "error_cart_position": [
+                    -0.03,
+                    0.03
+                  ]
+                },
+                "gates": {
+                  "cart_position": [
+                    {
+                      "source": "L_e_pendulum_angle",
+                      "type": "exp",
+                      "scaled": 0.12,
+                      "setpoint": 0.0,
+                      "min_factor": 0.0,
+                      "max_factor": 1.0,
+                      "invert": false
+                    },
+                    {
+                      "source": "L_edot_pendulum_angle",
+                      "type": "exp",
+                      "scaled": 0.15,
+                      "setpoint": 0.0,
+                      "min_factor": 0.0,
+                      "max_factor": 1.0,
+                      "invert": false
+                    }
+                  ]
+                }
+              }
+            },
+            "conditional_approach": {
+              "dynamic_penalty": {
+                "enabled": false,
+                "method": "quadratic",
+                "dynamic_penalty_params": {
+                  "control_action_pendulum_angle": {
+                    "assign_to": "pendulum_angle",
+                    "signal": "u_total_raw",
+                    "weight": 0.03,
+                    "condition": {
+                      "type": "exp",
+                      "feature": "error_pendulum_angle",
+                      "scaled": 0.05,
+                      "setpoint": 0.0
+                    }
+                  },
+                  "control_action_cart_position": {
+                    "assign_to": "cart_position",
+                    "signal": "cart_velocity_raw",
+                    "weight": 0.04,
+                    "condition": {
+                      "type": "exp",
+                      "feature": "error_cart_position",
+                      "scaled": 0.08,
+                      "setpoint": 0.0
+                    }
+                  }
+                }
+              },
+              "dynamic_incentive": {
+                "enabled": false,
+                "method": "adaptative",
+                "dynamic_incentive_lineal_params": {},
+                "dynamic_incentive_adapt_params": {
+                  "pendulum_capture_effort": {
+                    "assign_to": "pendulum_angle",
+                    "reward_mode": "capture_directional_effort",
+                    "x": "error_pendulum_angle",
+                    "u": "control_action_eff_pendulum_angle",
+                    "x_sp": 0.0,
+                    "capture_threshold": 0.08,
+                    "direction_sign": 1.0,
+                    "capture_strength": 6.0,
+                    "alignment_strength": 4.0,
+                    "weight": 0.06
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "metrics_setup": {
+        "system_measure": {
+          "entropy": {
+            "regime_control": {
+              "enabled": false,
+              "method": "shanon",
+              "shanon_params": {}
+            },
+            "stacionarity": {
+              "enabled": false,
+              "method": "shanon",
+              "shanon_params": {}
+            }
+          },
+          "risk_measures": {
+            "security_control": {
+              "enabled": false,
+              "type": "cvar",
+              "alpha": 0.95,
+              "vars": [
+                "L_e_total",
+                "L_u_total",
+                "L_sat_total"
+              ]
+            }
+          }
+        },
+        "stability_measure": {
+          "type": "exp_decay_metric",
+          "exp_decay_metric_params": {
+            "features": {
+              "pendulum_angle": {
+                "weight": 0.3,
+                "scaled": 0.1
+              },
+              "pendulum_velocity": {
+                "weight": 0.15,
+                "scaled": 0.5
+              },
+              "cart_position": {
+                "weight": 0.4,
+                "scaled": 0.25,
+                "setpoint": 0.0
+              },
+              "cart_velocity": {
+                "weight": 0.15,
+                "scaled": 0.5
+              }
+            }
+          },
+          "ira_zscore_metric_params": {
+            "lambda_factor": 1.0,
+            "epsilon_zscore_denominator": 1e-06,
+            "adaptive_stats": {
+              "enabled": false,
+              "min_episode": 3000,
+              "min_sigma": 0.0001
+            },
+            "features": {
+              "pendulum_angle": {
+                "weight": 0.1,
+                "mu": 0.0,
+                "sigma": 0.05
+              },
+              "pendulum_velocity": {
+                "weight": 0.1,
+                "mu": 0.0,
+                "sigma": 0.05
+              },
+              "cart_position": {
+                "weight": 0.1,
+                "mu": 0.0,
+                "sigma": 0.5
+              },
+              "cart_velocity": {
+                "weight": 0.1,
+                "mu": 0.0,
+                "sigma": 0.0
+              }
+            }
+          }
+        }
+      },
+      "data_handling": {
+        "output_root": "results_history_CartPole",
+        "episodes_per_dataset_chunk": 250,
+        "save_agent_state": true,
+        "agent_state_save_frequency": 2000,
+        "config_file": "sub_config_data_save_CartPole.yaml"
+      },
+      "visualization": {
+        "enabled": true,
+        "config_file": "sub_config_visualization_CartPole.yaml"
+      }
+    },
+    "dynamic_system": {
+      "config_main.dynamic_system.system_name": "cart_pole",
+      "config_main.dynamic_system.module_path": "dynamic_system.cart_pole_dynamic_system",
+      "config_main.dynamic_system.class_name": "CartPoleDynamicSystem",
+      "config_main.dynamic_system.initial_conditions.cart_position": 0.0,
+      "config_main.dynamic_system.initial_conditions.cart_velocity": 0.0,
+      "config_main.dynamic_system.initial_conditions.pendulum_angle": 0.157,
+      "config_main.dynamic_system.initial_conditions.pendulum_velocity": 0.0,
+      "config_main.dynamic_system.params.mass_cart_kg": 5.0,
+      "config_main.dynamic_system.params.mass_pendulum_kg": 1.0,
+      "config_main.dynamic_system.params.l": 1.0,
+      "config_main.dynamic_system.params.g": 9.81,
+      "config_main.dynamic_system.params.cart_friction_coef": 0.0,
+      "config_main.dynamic_system.params.pivot_friction_coef": 0.0,
+      "config_main.dynamic_system.params.max_torque_nm": 2.0,
+      "config_main.dynamic_system.params.gear_ratio": 1.0,
+      "config_main.dynamic_system.params.pinion_radius_m": 0.05,
+      "config_main.dynamic_system.termination_conditions.boundary_constraint.cart_position.0": -5.0,
+      "config_main.dynamic_system.termination_conditions.boundary_constraint.cart_position.1": 5.0,
+      "config_main.dynamic_system.termination_conditions.boundary_constraint.pendulum_angle.0": -1.0472,
+      "config_main.dynamic_system.termination_conditions.boundary_constraint.pendulum_angle.1": 1.0472,
+      "config_main.dynamic_system.termination_conditions.stabilization_criteria.pendulum_angle.0": -0.02,
+      "config_main.dynamic_system.termination_conditions.stabilization_criteria.pendulum_angle.1": 0.02,
+      "config_main.dynamic_system.termination_conditions.stabilization_criteria.pendulum_velocity.0": -0.1,
+      "config_main.dynamic_system.termination_conditions.stabilization_criteria.pendulum_velocity.1": 0.1,
+      "config_main.dynamic_system.termination_conditions.stabilization_criteria.cart_position.0": -0.1,
+      "config_main.dynamic_system.termination_conditions.stabilization_criteria.cart_position.1": 0.1,
+      "config_main.dynamic_system.termination_conditions.stabilization_criteria.cart_velocity.0": -0.1,
+      "config_main.dynamic_system.termination_conditions.stabilization_criteria.cart_velocity.1": 0.1,
+      "config_main.dynamic_system.reference_system_correction.enabled": true,
+      "config_main.dynamic_system.reference_system_correction.vars_correction.0": "pendulum_angle",
+      "config_main.dynamic_system.state_normalization.enabled": true,
+      "config_main.dynamic_system.state_normalization.output_limits.0": -1.0,
+      "config_main.dynamic_system.state_normalization.output_limits.1": 1.0,
+      "config_main.dynamic_system.state_normalization.ranges_params.pendulum_angle.0": -1.0472,
+      "config_main.dynamic_system.state_normalization.ranges_params.pendulum_angle.1": 1.0472,
+      "config_main.dynamic_system.state_normalization.ranges_params.pendulum_velocity.0": -4.0,
+      "config_main.dynamic_system.state_normalization.ranges_params.pendulum_velocity.1": 4.0,
+      "config_main.dynamic_system.state_normalization.ranges_params.cart_position.0": -5.0,
+      "config_main.dynamic_system.state_normalization.ranges_params.cart_position.1": 5.0,
+      "config_main.dynamic_system.state_normalization.ranges_params.cart_velocity.0": -8.0,
+      "config_main.dynamic_system.state_normalization.ranges_params.cart_velocity.1": 8.0,
+      "config_main.metrics_setup.system_measure.entropy.regime_control.enabled": false,
+      "config_main.metrics_setup.system_measure.entropy.regime_control.method": "shanon",
+      "config_main.metrics_setup.system_measure.entropy.stacionarity.enabled": false,
+      "config_main.metrics_setup.system_measure.entropy.stacionarity.method": "shanon",
+      "config_main.metrics_setup.system_measure.risk_measures.security_control.enabled": false,
+      "config_main.metrics_setup.system_measure.risk_measures.security_control.type": "cvar",
+      "config_main.metrics_setup.system_measure.risk_measures.security_control.alpha": 0.95,
+      "config_main.metrics_setup.system_measure.risk_measures.security_control.vars.0": "L_e_total",
+      "config_main.metrics_setup.system_measure.risk_measures.security_control.vars.1": "L_u_total",
+      "config_main.metrics_setup.system_measure.risk_measures.security_control.vars.2": "L_sat_total"
+    },
+    "controller_base": {
+      "config_main.controller_base.mixing_policy": "sum",
+      "config_main.controller_base.global_actuator_enabled": true,
+      "config_main.controller_base.global_actuator_limits.0": -1.0,
+      "config_main.controller_base.global_actuator_limits.1": 1.0,
+      "config_main.controller_base.controllers.controller_pendulum_angle.controller_name": "controller_pendulum_angle",
+      "config_main.controller_base.controllers.controller_pendulum_angle.module_path": "controllers.pid_controller",
+      "config_main.controller_base.controllers.controller_pendulum_angle.class_name": "PIDController",
+      "config_main.controller_base.controllers.controller_pendulum_angle.initial_conditions.kp": 1.0,
+      "config_main.controller_base.controllers.controller_pendulum_angle.initial_conditions.ki": 1.0,
+      "config_main.controller_base.controllers.controller_pendulum_angle.initial_conditions.kd": 1.0,
+      "config_main.controller_base.controllers.controller_pendulum_angle.params.name_objective_var": "pendulum_angle",
+      "config_main.controller_base.controllers.controller_pendulum_angle.params.setpoint": 0.0,
+      "config_main.controller_base.controllers.controller_pendulum_angle.params.error_is_setpoint_minus_pv": false,
+      "config_main.controller_base.controllers.controller_pendulum_angle.params.anti_windup.enabled": true,
+      "config_main.controller_base.controllers.controller_pendulum_angle.params.anti_windup.method": "conditional",
+      "config_main.controller_base.controllers.controller_pendulum_angle.params.anti_windup.back_calculation_betha": 0.02,
+      "config_main.controller_base.controllers.controller_cart_position.controller_name": "controller_cart_position",
+      "config_main.controller_base.controllers.controller_cart_position.module_path": "controllers.pid_controller",
+      "config_main.controller_base.controllers.controller_cart_position.class_name": "PIDController",
+      "config_main.controller_base.controllers.controller_cart_position.initial_conditions.kp": 1.0,
+      "config_main.controller_base.controllers.controller_cart_position.initial_conditions.ki": 1.0,
+      "config_main.controller_base.controllers.controller_cart_position.initial_conditions.kd": 1.0,
+      "config_main.controller_base.controllers.controller_cart_position.params.name_objective_var": "cart_position",
+      "config_main.controller_base.controllers.controller_cart_position.params.setpoint": 0.0,
+      "config_main.controller_base.controllers.controller_cart_position.params.error_is_setpoint_minus_pv": true,
+      "config_main.controller_base.controllers.controller_cart_position.params.anti_windup.enabled": true,
+      "config_main.controller_base.controllers.controller_cart_position.params.anti_windup.method": "conditional",
+      "config_main.controller_base.controllers.controller_cart_position.params.anti_windup.back_calculation_betha": 0.02,
+      "config_main.agent_base.agent_config.actions.actions_values.universal_params.delta_gain": 0.25,
+      "config_main.agent_base.agent_config.actions.actions_values.per_agent_params.delta_gain.kp_pendulum_angle": 0.2,
+      "config_main.agent_base.agent_config.actions.actions_values.per_agent_params.delta_gain.ki_pendulum_angle": 0.2,
+      "config_main.agent_base.agent_config.actions.actions_values.per_agent_params.delta_gain.kd_pendulum_angle": 0.2,
+      "config_main.agent_base.agent_config.actions.actions_values.per_agent_params.delta_gain.kp_cart_position": 0.2,
+      "config_main.agent_base.agent_config.actions.actions_values.per_agent_params.delta_gain.ki_cart_position": 0.2,
+      "config_main.agent_base.agent_config.actions.actions_values.per_agent_params.delta_gain.kd_cart_position": 0.2,
+      "config_main.agent_base.agent_config.agents.kp_pendulum_angle.enabled_agent": true,
+      "config_main.agent_base.agent_config.agents.kp_pendulum_angle.min": 0.0,
+      "config_main.agent_base.agent_config.agents.kp_pendulum_angle.max": 10.0,
+      "config_main.agent_base.agent_config.agents.kp_pendulum_angle.state_vars": [],
+      "config_main.agent_base.agent_config.agents.ki_pendulum_angle.enabled_agent": true,
+      "config_main.agent_base.agent_config.agents.ki_pendulum_angle.min": 0.0,
+      "config_main.agent_base.agent_config.agents.ki_pendulum_angle.max": 10.0,
+      "config_main.agent_base.agent_config.agents.ki_pendulum_angle.state_vars": [],
+      "config_main.agent_base.agent_config.agents.kd_pendulum_angle.enabled_agent": true,
+      "config_main.agent_base.agent_config.agents.kd_pendulum_angle.min": 0.0,
+      "config_main.agent_base.agent_config.agents.kd_pendulum_angle.max": 10.0,
+      "config_main.agent_base.agent_config.agents.kd_pendulum_angle.state_vars": [],
+      "config_main.agent_base.agent_config.agents.kp_cart_position.enabled_agent": true,
+      "config_main.agent_base.agent_config.agents.kp_cart_position.min": 0.0,
+      "config_main.agent_base.agent_config.agents.kp_cart_position.max": 10.0,
+      "config_main.agent_base.agent_config.agents.kp_cart_position.state_vars": [],
+      "config_main.agent_base.agent_config.agents.ki_cart_position.enabled_agent": true,
+      "config_main.agent_base.agent_config.agents.ki_cart_position.min": 0.0,
+      "config_main.agent_base.agent_config.agents.ki_cart_position.max": 10.0,
+      "config_main.agent_base.agent_config.agents.ki_cart_position.state_vars": [],
+      "config_main.agent_base.agent_config.agents.kd_cart_position.enabled_agent": true,
+      "config_main.agent_base.agent_config.agents.kd_cart_position.min": 0.0,
+      "config_main.agent_base.agent_config.agents.kd_cart_position.max": 10.0,
+      "config_main.agent_base.agent_config.agents.kd_cart_position.state_vars": [],
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kp_pendulum_angle.w_e": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kp_pendulum_angle.w_edot": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kp_pendulum_angle.w_I": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kp_pendulum_angle.w_u": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kp_pendulum_angle.w_s": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.ki_pendulum_angle.w_e": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.ki_pendulum_angle.w_edot": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.ki_pendulum_angle.w_I": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.ki_pendulum_angle.w_u": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.ki_pendulum_angle.w_s": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kd_pendulum_angle.w_e": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kd_pendulum_angle.w_edot": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kd_pendulum_angle.w_I": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kd_pendulum_angle.w_u": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kd_pendulum_angle.w_s": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kp_cart_position.w_e": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kp_cart_position.w_edot": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kp_cart_position.w_I": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kp_cart_position.w_u": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kp_cart_position.w_s": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.ki_cart_position.w_e": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.ki_cart_position.w_edot": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.ki_cart_position.w_I": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.ki_cart_position.w_u": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.ki_cart_position.w_s": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kd_cart_position.w_e": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kd_cart_position.w_edot": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kd_cart_position.w_I": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kd_cart_position.w_u": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kd_cart_position.w_s": 1.0
+    },
+    "agent_base": {
+      "config_main.agent_base.agent_base_name": "pid_qlearning",
+      "config_main.agent_base.module_path": "agents.pid_qlearning_agent",
+      "config_main.agent_base.class_name": "PIDQLearningAgent",
+      "config_main.agent_base.params.algorithm": "q-learning",
+      "config_main.agent_base.params.discount_factor": 0.925,
+      "config_main.agent_base.params.epsilon": 1.0,
+      "config_main.agent_base.params.epsilon_decay.enabled": true,
+      "config_main.agent_base.params.epsilon_decay.decay_factor": 0.998849,
+      "config_main.agent_base.params.epsilon_decay.epsilon_min": 0.01,
+      "config_main.agent_base.params.learning_rate": 0.2,
+      "config_main.agent_base.params.learning_rate_decay.enabled": true,
+      "config_main.agent_base.params.learning_rate_decay.decay_factor": 0.99925,
+      "config_main.agent_base.params.learning_rate_decay.learning_rate_min": 0.01,
+      "config_main.agent_base.agent_config.actions.actions_space.0": "decrease",
+      "config_main.agent_base.agent_config.actions.actions_space.1": "maintain",
+      "config_main.agent_base.agent_config.actions.actions_space.2": "increase",
+      "config_main.agent_base.agent_config.actions.actions_values.mode": "universal",
+      "config_main.agent_base.agent_config.actions.actions_values.universal_params.delta_gain": 0.25,
+      "config_main.agent_base.agent_config.actions.actions_values.per_agent_params.delta_gain.kp_pendulum_angle": 0.2,
+      "config_main.agent_base.agent_config.actions.actions_values.per_agent_params.delta_gain.ki_pendulum_angle": 0.2,
+      "config_main.agent_base.agent_config.actions.actions_values.per_agent_params.delta_gain.kd_pendulum_angle": 0.2,
+      "config_main.agent_base.agent_config.actions.actions_values.per_agent_params.delta_gain.kp_cart_position": 0.2,
+      "config_main.agent_base.agent_config.actions.actions_values.per_agent_params.delta_gain.ki_cart_position": 0.2,
+      "config_main.agent_base.agent_config.actions.actions_values.per_agent_params.delta_gain.kd_cart_position": 0.2,
+      "config_main.agent_base.agent_config.agents.kp_pendulum_angle.enabled_agent": true,
+      "config_main.agent_base.agent_config.agents.kp_pendulum_angle.min": 0.0,
+      "config_main.agent_base.agent_config.agents.kp_pendulum_angle.max": 10.0,
+      "config_main.agent_base.agent_config.agents.kp_pendulum_angle.state_vars": [],
+      "config_main.agent_base.agent_config.agents.ki_pendulum_angle.enabled_agent": true,
+      "config_main.agent_base.agent_config.agents.ki_pendulum_angle.min": 0.0,
+      "config_main.agent_base.agent_config.agents.ki_pendulum_angle.max": 10.0,
+      "config_main.agent_base.agent_config.agents.ki_pendulum_angle.state_vars": [],
+      "config_main.agent_base.agent_config.agents.kd_pendulum_angle.enabled_agent": true,
+      "config_main.agent_base.agent_config.agents.kd_pendulum_angle.min": 0.0,
+      "config_main.agent_base.agent_config.agents.kd_pendulum_angle.max": 10.0,
+      "config_main.agent_base.agent_config.agents.kd_pendulum_angle.state_vars": [],
+      "config_main.agent_base.agent_config.agents.kp_cart_position.enabled_agent": true,
+      "config_main.agent_base.agent_config.agents.kp_cart_position.min": 0.0,
+      "config_main.agent_base.agent_config.agents.kp_cart_position.max": 10.0,
+      "config_main.agent_base.agent_config.agents.kp_cart_position.state_vars": [],
+      "config_main.agent_base.agent_config.agents.ki_cart_position.enabled_agent": true,
+      "config_main.agent_base.agent_config.agents.ki_cart_position.min": 0.0,
+      "config_main.agent_base.agent_config.agents.ki_cart_position.max": 10.0,
+      "config_main.agent_base.agent_config.agents.ki_cart_position.state_vars": [],
+      "config_main.agent_base.agent_config.agents.kd_cart_position.enabled_agent": true,
+      "config_main.agent_base.agent_config.agents.kd_cart_position.min": 0.0,
+      "config_main.agent_base.agent_config.agents.kd_cart_position.max": 10.0,
+      "config_main.agent_base.agent_config.agents.kd_cart_position.state_vars": [],
+      "config_main.agent_base.agent_config.agents.pendulum_angle.enabled_agent": false,
+      "config_main.agent_base.agent_config.agents.pendulum_angle.min": 0.0,
+      "config_main.agent_base.agent_config.agents.pendulum_angle.max": 0.5,
+      "config_main.agent_base.agent_config.agents.pendulum_angle.bins": 2,
+      "config_main.agent_base.agent_config.agents.pendulum_angle.state_vars": [],
+      "config_main.agent_base.agent_config.agents.cart_position.enabled_agent": false,
+      "config_main.agent_base.agent_config.agents.cart_position.min": 0.0,
+      "config_main.agent_base.agent_config.agents.cart_position.max": 2.0,
+      "config_main.agent_base.agent_config.agents.cart_position.bins": 2,
+      "config_main.agent_base.agent_config.agents.cart_position.state_vars": [],
+      "config_main.reward_base.reward_calculation.coordination_reward.epsilon_credit": 1e-06,
+      "config_main.metrics_setup.stability_measure.ira_zscore_metric_params.epsilon_zscore_denominator": 1e-06,
+      "config_main.data_handling.save_agent_state": true,
+      "config_main.data_handling.agent_state_save_frequency": 2000
+    },
+    "reward_base": {
+      "config_main.reward_base.reward_base_name": "reward_base",
+      "config_main.reward_base.module_path": "rewards.reward_calculator_base",
+      "config_main.reward_base.class_name": "RewardCalculatorBase",
+      "config_main.reward_base.reward_config.reward_approach": "controller_reward",
+      "config_main.reward_base.reward_config.individual_reward_params.method": "lineal_combination",
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kp_pendulum_angle.w_e": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kp_pendulum_angle.w_edot": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kp_pendulum_angle.w_I": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kp_pendulum_angle.w_u": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kp_pendulum_angle.w_s": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.ki_pendulum_angle.w_e": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.ki_pendulum_angle.w_edot": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.ki_pendulum_angle.w_I": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.ki_pendulum_angle.w_u": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.ki_pendulum_angle.w_s": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kd_pendulum_angle.w_e": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kd_pendulum_angle.w_edot": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kd_pendulum_angle.w_I": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kd_pendulum_angle.w_u": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.pendulum_angle.kd_pendulum_angle.w_s": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kp_cart_position.w_e": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kp_cart_position.w_edot": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kp_cart_position.w_I": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kp_cart_position.w_u": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kp_cart_position.w_s": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.ki_cart_position.w_e": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.ki_cart_position.w_edot": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.ki_cart_position.w_I": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.ki_cart_position.w_u": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.ki_cart_position.w_s": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kd_cart_position.w_e": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kd_cart_position.w_edot": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kd_cart_position.w_I": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kd_cart_position.w_u": 1.0,
+      "config_main.reward_base.reward_config.individual_reward_params.lineal_combination_params.cart_position.kd_cart_position.w_s": 1.0,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.enabled": true,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.output_limits.0": 0.0,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.output_limits.1": 1.0,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.pendulum_angle.e.method": "rms",
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.pendulum_angle.e.range.0": -0.35,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.pendulum_angle.e.range.1": 0.35,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.pendulum_angle.edot.method": "rms",
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.pendulum_angle.edot.range.0": -1.2,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.pendulum_angle.edot.range.1": 1.2,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.pendulum_angle.I.method": "rms",
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.pendulum_angle.I.range.0": -2.0,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.pendulum_angle.I.range.1": 2.0,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.pendulum_angle.u.method": "rms",
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.pendulum_angle.u.range.0": -1.0,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.pendulum_angle.u.range.1": 1.0,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.cart_position.e.method": "rms",
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.cart_position.e.range.0": -0.3,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.cart_position.e.range.1": 0.3,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.cart_position.edot.method": "rms",
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.cart_position.edot.range.0": -0.25,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.cart_position.edot.range.1": 0.25,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.cart_position.I.method": "rms",
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.cart_position.I.range.0": -0.7,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.cart_position.I.range.1": 0.7,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.cart_position.u.method": "rms",
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.cart_position.u.range.0": -1.0,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.cart_position.u.range.1": 1.0,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.global_vars.u_total.method": "mean_squared",
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.global_vars.u_total.range.0": -1,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.global_vars.u_total.range.1": 1,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.global_vars.delta_u_total.method": "mean_squared",
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.global_vars.delta_u_total.range.0": -0.05,
+      "config_main.reward_base.reward_calculation.metric_processing.normalization.params.global_vars.delta_u_total.range.1": 0.05,
+      "config_main.reward_base.reward_calculation.principal_reward.enabled": true,
+      "config_main.reward_base.reward_calculation.principal_reward.reward_principal_name": "lagrange_reward",
+      "config_main.reward_base.reward_calculation.principal_reward.module_path": "rewards.lagrange_reward_calculator",
+      "config_main.reward_base.reward_calculation.principal_reward.class_name": "LagrangeRewardCalculator",
+      "config_main.reward_base.reward_calculation.principal_reward.method": "weighted_exponential",
+      "config_main.reward_base.reward_calculation.principal_reward.lineal_combination_params.features.L_e.weight": 0.35,
+      "config_main.reward_base.reward_calculation.principal_reward.lineal_combination_params.features.L_edot.weight": 0.5,
+      "config_main.reward_base.reward_calculation.principal_reward.lineal_combination_params.features.L_I.weight": 0.0,
+      "config_main.reward_base.reward_calculation.principal_reward.lineal_combination_params.features.L_delta_u.weight": 0.15,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.features.L_e.weight": 0.65,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.features.L_e.scaled": 5.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.features.L_e.setpoint": 0.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.features.L_edot.weight": 0.3,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.features.L_edot.scaled": 2.5,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.features.L_edot.setpoint": 0.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.features.L_I.weight": 0.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.features.L_I.scaled": 1.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.features.L_I.setpoint": 0.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.features.L_u.weight": 0.05,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.features.L_u.scaled": 1.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.features.L_u.setpoint": 0.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_e.enabled": false,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_e.type": "exp",
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_e.source": "L_e_{var_obj}",
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_e.use_sqrt": false,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_e.setpoint": 0.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_e.per_var.pendulum_angle.scaled": 1.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_e.per_var.pendulum_angle.min_factor": 1.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_e.per_var.pendulum_angle.max_factor": 1.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_e.per_var.cart_position.scaled": 1.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_e.per_var.cart_position.min_factor": 0.2,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_e.per_var.cart_position.max_factor": 1.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_e.per_var.cart_position.invert": false,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_edot.enabled": true,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_edot.type": "exp",
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_edot.source": "L_e_{var_obj}",
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_edot.use_sqrt": false,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_edot.setpoint": 0.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_edot.per_var.pendulum_angle.scaled": 0.25,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_edot.per_var.pendulum_angle.min_factor": 0.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_edot.per_var.pendulum_angle.max_factor": 1.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_edot.per_var.cart_position.scaled": 0.25,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_edot.per_var.cart_position.min_factor": 0.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_edot.per_var.cart_position.max_factor": 1.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_edot.per_var.cart_position.invert": false,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_u.enabled": true,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_u.type": "exp",
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_u.source": "L_e_{var_obj}",
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_u.use_sqrt": false,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_u.setpoint": 0.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_u.per_var.pendulum_angle.scaled": 0.25,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_u.per_var.pendulum_angle.min_factor": 0.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_u.per_var.pendulum_angle.max_factor": 1.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_u.per_var.cart_position.scaled": 0.25,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_u.per_var.cart_position.min_factor": 0.0,
+      "config_main.reward_base.reward_calculation.principal_reward.weighted_exponential_params.feature_gates.L_u.per_var.cart_position.max_factor": 1.0,
+      "config_main.reward_base.reward_calculation.coordination_reward.enabled": true,
+      "config_main.reward_base.reward_calculation.coordination_reward.reward_name": "coordination_global_progress",
+      "config_main.reward_base.reward_calculation.coordination_reward.module_path": "rewards.coordination_reward_handler",
+      "config_main.reward_base.reward_calculation.coordination_reward.class_name": "CoordinationRewardHandler",
+      "config_main.reward_base.reward_calculation.coordination_reward.reward_mode": "task_progress_credit_assignment",
+      "config_main.reward_base.reward_calculation.coordination_reward.assign_mode": "per_var",
+      "config_main.reward_base.reward_calculation.coordination_reward.global_weight": 10,
+      "config_main.reward_base.reward_calculation.coordination_reward.potential_features.0": "L_e",
+      "config_main.reward_base.reward_calculation.coordination_reward.potential_features.1": "L_edot",
+      "config_main.reward_base.reward_calculation.coordination_reward.potential_weights.L_e.pendulum_angle": 0.7,
+      "config_main.reward_base.reward_calculation.coordination_reward.potential_weights.L_e.cart_position": 0.3,
+      "config_main.reward_base.reward_calculation.coordination_reward.potential_weights.L_edot.pendulum_angle": 0.5,
+      "config_main.reward_base.reward_calculation.coordination_reward.potential_weights.L_edot.cart_position": 0.5,
+      "config_main.reward_base.reward_calculation.coordination_reward.progress_positive_only": true,
+      "config_main.reward_base.reward_calculation.coordination_reward.progress_clip_max": 0.02,
+      "config_main.reward_base.reward_calculation.coordination_reward.contribution_error_signal": "error_{var_obj}",
+      "config_main.reward_base.reward_calculation.coordination_reward.contribution_effort_signal": "u_alloc_{var_obj}",
+      "config_main.reward_base.reward_calculation.coordination_reward.correction_signs.pendulum_angle": 1.0,
+      "config_main.reward_base.reward_calculation.coordination_reward.correction_signs.cart_position": 1.0,
+      "config_main.reward_base.reward_calculation.coordination_reward.epsilon_credit": 1e-06,
+      "config_main.reward_base.reward_calculation.coordination_reward.credit_reduction_mode": "average",
+      "config_main.reward_base.reward_calculation.extra_rewards.enabled": false,
+      "config_main.reward_base.reward_calculation.extra_rewards.reward_extra_name": "extra_rewards",
+      "config_main.reward_base.reward_calculation.extra_rewards.module_path": "rewards.extra_rewards_handler",
+      "config_main.reward_base.reward_calculation.extra_rewards.class_name": "ExtraRewardsHandler",
+      "config_main.reward_base.reward_calculation.extra_rewards.penalty_approach.penalty_instantaneous_reward.enabled": false,
+      "config_main.reward_base.reward_calculation.extra_rewards.penalty_approach.penalty_instantaneous_reward.method": "lineal",
+      "config_main.reward_base.reward_calculation.extra_rewards.penalty_approach.penalty_instantaneous_reward.type": "fixed",
+      "config_main.reward_base.reward_calculation.extra_rewards.penalty_approach.penalty_instantaneous_reward.penalty_lineal_params.time": 200,
+      "config_main.reward_base.reward_calculation.extra_rewards.penalty_approach.penalty_instantaneous_reward.penalty_quadratic_params.time": 0.4,
+      "config_main.reward_base.reward_calculation.extra_rewards.penalty_approach.penalty_delta_var.enabled": false,
+      "config_main.reward_base.reward_calculation.extra_rewards.penalty_approach.penalty_delta_var.method": "quadratic",
+      "config_main.reward_base.reward_calculation.extra_rewards.penalty_approach.penalty_delta_var.penalty_delta_var_params.delta_control_action_pendulum_angle.weight": 0.1,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.goal_bonus_reward.enabled": false,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.goal_bonus_reward.success_flags.0": "stabilization_success",
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.goal_bonus_reward.method": "decay",
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.goal_bonus_reward.static_params.bonus_value": 1.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.goal_bonus_reward.decay_params.decay_type": "exponential",
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.goal_bonus_reward.decay_params.base_value": 2.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.goal_bonus_reward.decay_params.min_value": 1.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.goal_bonus_reward.decay_params.time_constant_sec": 1.2,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.enabled": false,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.per_step_band_bonus": 0.002,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.max_total_band_bonus.pendulum_angle": 1.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.max_total_band_bonus.cart_position": 1.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.ranges.error_pendulum_angle.0": -0.05,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.ranges.error_pendulum_angle.1": 0.05,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.ranges.error_cart_position.0": -0.03,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.ranges.error_cart_position.1": 0.03,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.gates.cart_position.0.source": "L_e_pendulum_angle",
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.gates.cart_position.0.type": "exp",
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.gates.cart_position.0.scaled": 0.12,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.gates.cart_position.0.setpoint": 0.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.gates.cart_position.0.min_factor": 0.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.gates.cart_position.0.max_factor": 1.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.gates.cart_position.0.invert": false,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.gates.cart_position.1.source": "L_edot_pendulum_angle",
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.gates.cart_position.1.type": "exp",
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.gates.cart_position.1.scaled": 0.15,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.gates.cart_position.1.setpoint": 0.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.gates.cart_position.1.min_factor": 0.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.gates.cart_position.1.max_factor": 1.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.gates.cart_position.1.invert": false,
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.enabled": false,
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.method": "quadratic",
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_pendulum_angle.assign_to": "pendulum_angle",
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_pendulum_angle.signal": "u_total_raw",
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_pendulum_angle.weight": 0.03,
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_pendulum_angle.condition.type": "exp",
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_pendulum_angle.condition.feature": "error_pendulum_angle",
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_pendulum_angle.condition.scaled": 0.05,
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_pendulum_angle.condition.setpoint": 0.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_cart_position.assign_to": "cart_position",
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_cart_position.signal": "cart_velocity_raw",
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_cart_position.weight": 0.04,
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_cart_position.condition.type": "exp",
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_cart_position.condition.feature": "error_cart_position",
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_cart_position.condition.scaled": 0.08,
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_cart_position.condition.setpoint": 0.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_incentive.enabled": false,
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_incentive.method": "adaptative",
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_incentive.dynamic_incentive_adapt_params.pendulum_capture_effort.assign_to": "pendulum_angle",
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_incentive.dynamic_incentive_adapt_params.pendulum_capture_effort.reward_mode": "capture_directional_effort",
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_incentive.dynamic_incentive_adapt_params.pendulum_capture_effort.x": "error_pendulum_angle",
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_incentive.dynamic_incentive_adapt_params.pendulum_capture_effort.u": "control_action_eff_pendulum_angle",
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_incentive.dynamic_incentive_adapt_params.pendulum_capture_effort.x_sp": 0.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_incentive.dynamic_incentive_adapt_params.pendulum_capture_effort.capture_threshold": 0.08,
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_incentive.dynamic_incentive_adapt_params.pendulum_capture_effort.direction_sign": 1.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_incentive.dynamic_incentive_adapt_params.pendulum_capture_effort.capture_strength": 6.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_incentive.dynamic_incentive_adapt_params.pendulum_capture_effort.alignment_strength": 4.0,
+      "config_main.reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_incentive.dynamic_incentive_adapt_params.pendulum_capture_effort.weight": 0.06
+    }
+  }
+}

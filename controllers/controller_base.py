@@ -108,17 +108,43 @@ class ControllerBase:
     def _return_state_to_controllers(self):
         """
         Retorna el estado del controlador base a cada controlador.
-        Calcula u_eff_i centralmente (scaling proporcional) y lo pasa directamente.
+        Calcula señales locales de control desde la acción global saturada.
         """
-        # Calcular scaling_factor una sola vez (nivel global)
-        if self.u_total_raw != 0:
+        if self.u_total_raw != 0.0:
             scaling_factor = self.u_total_saturated / self.u_total_raw
         else:
             scaling_factor = 1.0
-        
-        for controller_name, controller in self.controllers.items():
-            u_eff_i = scaling_factor * controller.control_action
-            controller.return_state_to_controller(u_eff_i, self.is_saturated_global, self.dt_sec)
+
+        if self.u_total_saturated > 0.0:
+            u_total_sign = 1.0
+        elif self.u_total_saturated < 0.0:
+            u_total_sign = -1.0
+        else:
+            u_total_sign = 0.0
+
+        support_total = 0.0
+        if u_total_sign != 0.0:
+            for controller in self.controllers.values():
+                support_total += max(0.0, u_total_sign * controller.control_action)
+
+        for controller in self.controllers.values():
+            control_action_eff = scaling_factor * controller.control_action
+
+            if support_total > 0.0:
+                support = max(0.0, u_total_sign * controller.control_action)
+                u_alloc = self.u_total_saturated * support / support_total
+                u_conflict = max(0.0, -u_total_sign * controller.control_action)
+            else:
+                u_alloc = 0.0
+                u_conflict = 0.0
+
+            controller.return_state_to_controller(
+                control_action_eff,
+                u_alloc,
+                u_conflict,
+                self.is_saturated_global,
+                self.dt_sec
+            )
     
     def get_records(self):
         """

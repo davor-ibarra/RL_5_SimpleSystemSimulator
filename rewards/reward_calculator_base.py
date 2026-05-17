@@ -231,7 +231,7 @@ class RewardCalculatorBase:
         
         # 2. Calcular extra rewards (pasando termination_flag y current_time_sec)
         if self.extra_rewards_handler:
-            extra_reward, self._last_extra_record = self.extra_rewards_handler.evaluate(extra_reward_component, termination_flag, current_time_sec)
+            extra_reward, self._last_extra_record = self.extra_rewards_handler.evaluate(extra_reward_component, reward_component, termination_flag, current_time_sec)
             for agent_name, var_obj in self.agent_to_var_obj_map.items():
                 extra_total_key = f'extra_total_{var_obj}'
                 if extra_total_key in self._last_extra_record:

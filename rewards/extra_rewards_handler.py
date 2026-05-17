@@ -78,6 +78,7 @@ class ExtraRewardsHandler:
         self.band_ranges = {}
         self.band_per_step_bonus = 0.0
         self.band_max_bonus = {}
+        self.band_gate_rules = {}
         self.dyn_pen_rules = []
         self.dyn_inc_rules = []
         
@@ -116,6 +117,20 @@ class ExtraRewardsHandler:
                     self.band_ranges[v_obj] = []
                 self.band_ranges[v_obj].append((v_name, mn, mx))
                 self.band_max_bonus[v_obj] = band_cfg['max_total_band_bonus'][v_obj]
+            
+            if 'gates' in band_cfg:
+                for var_obj, gate_cfg in band_cfg['gates'].items():
+                    self.band_gate_rules[var_obj] = []
+                    for rule_cfg in gate_cfg:
+                        self.band_gate_rules[var_obj].append((
+                            rule_cfg['source'],
+                            rule_cfg['type'],
+                            rule_cfg['scaled'],
+                            rule_cfg['setpoint'],
+                            rule_cfg['min_factor'],
+                            rule_cfg['max_factor'],
+                            rule_cfg['invert']
+                        ))
                 
         # 3. Conditionals
         dp_cfg = self.conditional_config['dynamic_penalty']
@@ -145,12 +160,13 @@ class ExtraRewardsHandler:
                     signal_key = cfg.get('y', cfg.get('signal', v_name))
                 self.dyn_inc_rules.append((signal_key, v_obj, method, cfg))
     
-    def evaluate(self, extra_reward_component, termination_flag='unknown', current_time_sec=0.0):
+    def evaluate(self, extra_reward_component, reward_component, termination_flag='unknown', current_time_sec=0.0):
         """
         Evalúa todas las reglas de extra rewards.
         
         Args:
             extra_reward_component (dict): Series crudas {var_name: [lista]}
+            reward_component (dict): Métricas interval-level ya procesadas.
             termination_flag (str): Flag de terminación del episodio
             current_time_sec (float): Tiempo actual en el episodio [s]
             
@@ -184,7 +200,7 @@ class ExtraRewardsHandler:
         
         # 2. Bonuses
         bonus_total, bonus_flat = self._evaluate_bonuses(
-            extra_reward_component, termination_flag, current_time_sec, var_objs
+            extra_reward_component, reward_component, termination_flag, current_time_sec, var_objs
         )
         total_extra += bonus_total
         flat.update(bonus_flat)
@@ -372,13 +388,14 @@ class ExtraRewardsHandler:
             
         return total_penalty, flat
     
-    def _evaluate_bonuses(self, extra_reward_component, termination_flag, current_time_sec, var_objs):
+    def _evaluate_bonuses(self, extra_reward_component, reward_component, termination_flag, current_time_sec, var_objs):
         """
         Evalúa bonus_approach iternando las listas de reglas pre-compiladas.
         """
         total_bonus = 0.0
         flat = {f'extra_bonus_goal_{v}': 0.0 for v in var_objs}
         flat.update({f'extra_bonus_band_{v}': 0.0 for v in var_objs})
+        flat.update({f'extra_bonus_band_gate_{v}': 1.0 for v in var_objs})
         
         # 1. Goal Bonus
         if self.goal_bonus_rule and termination_flag in self.goal_bonus_rule['flags']:
@@ -402,7 +419,7 @@ class ExtraRewardsHandler:
         # 2. Bandwidth Bonus
         if self.band_ranges:
             for var, range_entries in self.band_ranges.items():
-                series_list = [(extra_reward_component.get(vn, []), mn, mx) for vn, mn, mx in range_entries]
+                series_list = [(extra_reward_component[vn], mn, mx) for vn, mn, mx in range_entries]
                 
                 if not series_list or any(len(s) == 0 for s, _, _ in series_list):
                     continue
@@ -412,8 +429,10 @@ class ExtraRewardsHandler:
                 for t in range(min_len):
                     if all(mn <= s[t] <= mx for s, mn, mx in series_list):
                         steps_in_band += 1
-                        
-                bonus = steps_in_band * self.band_per_step_bonus
+                
+                gate_factor = self._compute_band_gate_factor(reward_component, var)
+                bonus = steps_in_band * self.band_per_step_bonus * gate_factor
+
                 potential_total = self.accumulated_band_bonus[var] + bonus
                 if potential_total > self.band_max_bonus[var]:
                     bonus = max(0.0, self.band_max_bonus[var] - self.accumulated_band_bonus[var])
@@ -421,9 +440,34 @@ class ExtraRewardsHandler:
                 self.accumulated_band_bonus[var] += bonus
                 total_bonus += bonus
                 flat[f'extra_bonus_band_{var}'] = bonus
+                flat[f'extra_bonus_band_gate_{var}'] = gate_factor
                 
         return total_bonus, flat
     
+    def _compute_band_gate_factor(self, reward_component, var_obj):
+        """
+        Calcula la compuerta del bandwidth_bonus desde métricas interval-level.
+        """
+        if var_obj not in self.band_gate_rules:
+            return 1.0
+
+        gate_factor = 1.0
+        for source_key, factor_type, gain, setpoint, min_factor, max_factor, invert in self.band_gate_rules[var_obj]:
+            source_value = reward_component[source_key]
+            distance = abs(source_value - setpoint)
+
+            if factor_type == 'exp':
+                factor = math.exp(-((distance / gain) ** 2)) if gain > 0.0 else 0.0
+            else:
+                factor = math.tanh(gain * distance)
+
+            if invert:
+                factor = 1.0 - factor
+
+            gate_factor *= min(max_factor, max(min_factor, factor))
+
+        return gate_factor
+
     def _evaluate_conditional(self, extra_reward_component, var_objs):
         """
         Evalúa conditional_approach iternando las listas de reglas pre-compiladas.

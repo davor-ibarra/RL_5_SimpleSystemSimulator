@@ -1,0 +1,23 @@
+{
+  "project_root": "C:\\Users\\davor\\Escritorio\\DOCTORADO\\Tesis\\RL_5_SimpleSystemSimulator",
+  "input_results_root": "C:\\Users\\davor\\Escritorio\\DOCTORADO\\Tesis\\RL_5_SimpleSystemSimulator\\results_history_CartPole\\cart_pole",
+  "output_analysis_path": "C:\\Users\\davor\\Escritorio\\DOCTORADO\\Tesis\\RL_5_SimpleSystemSimulator\\analysis\\check_summary_results_outputs",
+  "summary_name": "summary.xlsx",
+  "metadata_name": "metadata.json",
+  "run_selection_mode": "last_n",
+  "n_run_selection": 2,
+  "explicit_run_ids": [
+    "20260511_1756_POI",
+    "20260512_1046_POI2"
+  ],
+  "selected_run_ids": [
+    "20260512_1046_POI2",
+    "20260514_0126"
+  ],
+  "reward_group_source": "total_reward",
+  "duration_group_source": "final_t_sec",
+  "final_window_episodes": 500,
+  "final_window_fraction": 0.1,
+  "n_tables_registered": 61,
+  "n_figures_registered": 32
+}
