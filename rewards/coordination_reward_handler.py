@@ -31,6 +31,7 @@ class CoordinationRewardHandler:
         self.config = config
         self.reward_mode = config['reward_mode']
         self.assign_mode = config['assign_mode']
+        self.normalized_reward_mode = config.get('normalized_reward_mode', False)
         self.global_weight = config['global_weight']
         self.potential_features = config['potential_features']
         self.potential_weights = config['potential_weights']
@@ -89,28 +90,41 @@ class CoordinationRewardHandler:
         task_potential = self._compute_task_potential(reward_component)
         task_progress_delta = self._compute_task_progress_delta(task_potential)
         task_progress_rewardable = self._compute_rewardable_progress(task_progress_delta)
+        task_progress_01 = self._compute_task_progress_01(task_progress_rewardable)
 
         credit_raw = self._compute_credit_raw(extra_reward_component)
         credit_share = self._compute_credit_share(credit_raw)
         coordination_rewards_by_var = self._compute_coordination_rewards(
             credit_share,
-            task_progress_rewardable
+            task_progress_rewardable,
+            task_progress_01
+        )
+        coordination_rewards_by_var_01 = self._compute_coordination_rewards_01(
+            credit_share,
+            task_progress_01
         )
 
         coordination_reward_total = 0.0
+        coordination_reward_total_01 = 0.0
         for var_obj in self.var_objs:
             coordination_reward_total += coordination_rewards_by_var[var_obj]
+            coordination_reward_total_01 += coordination_rewards_by_var_01[var_obj]
 
         flat_record = {
+            'coordination_reward_normalized_mode': float(self.normalized_reward_mode),
+            'coordination_reward_bound': self._compute_coordination_reward_bound(),
             'coordination_task_potential': task_potential,
             'coordination_task_progress_delta': task_progress_delta,
             'coordination_task_progress_positive': task_progress_rewardable,
+            'coordination_task_progress_01': task_progress_01,
+            'coordination_reward_total_01': coordination_reward_total_01,
             'coordination_reward_total': coordination_reward_total
         }
 
         for var_obj in self.var_objs:
             flat_record[f'coordination_credit_raw_{var_obj}'] = credit_raw[var_obj]
             flat_record[f'coordination_credit_share_{var_obj}'] = credit_share[var_obj]
+            flat_record[f'coordination_reward_01_{var_obj}'] = coordination_rewards_by_var_01[var_obj]
             flat_record[f'extra_conditional_coordination_bonus_{var_obj}'] = coordination_rewards_by_var[var_obj]
 
         self.previous_task_potential = task_potential
@@ -148,6 +162,14 @@ class CoordinationRewardHandler:
             progress_value = self.progress_clip_max
 
         return progress_value
+
+    def _compute_task_progress_01(self, task_progress_rewardable):
+        """
+        Normaliza el progreso coordinativo por la cota declarada del bloque.
+        """
+        if self.progress_clip_max <= 0.0:
+            return 0.0
+        return min(1.0, max(0.0, task_progress_rewardable / self.progress_clip_max))
 
     def _compute_credit_raw(self, extra_reward_component):
         """
@@ -187,10 +209,13 @@ class CoordinationRewardHandler:
 
         return credit_share
 
-    def _compute_coordination_rewards(self, credit_share, task_progress_rewardable):
+    def _compute_coordination_rewards(self, credit_share, task_progress_rewardable, task_progress_01):
         """
         Calcula el bonus coordinativo final por lazo.
         """
+        if self.normalized_reward_mode:
+            return self._compute_coordination_rewards_01(credit_share, task_progress_01)
+
         coordination_rewards_by_var = {}
         for var_obj in self.var_objs:
             coordination_rewards_by_var[var_obj] = (
@@ -199,6 +224,21 @@ class CoordinationRewardHandler:
                 * task_progress_rewardable
             )
         return coordination_rewards_by_var
+
+    def _compute_coordination_rewards_01(self, credit_share, task_progress_01):
+        """
+        Calcula la version acotada [0, 1] del bonus coordinativo.
+        """
+        coordination_rewards_by_var = {}
+        for var_obj in self.var_objs:
+            coordination_rewards_by_var[var_obj] = credit_share[var_obj] * task_progress_01
+        return coordination_rewards_by_var
+
+    def _compute_coordination_reward_bound(self):
+        """
+        Cota analitica legacy usada para mapear el bloque a [0, 1].
+        """
+        return max(0.0, self.global_weight * self.progress_clip_max)
 
     def get_coordination_reward_params_record(self):
         """

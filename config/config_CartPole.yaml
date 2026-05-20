@@ -94,7 +94,7 @@ agent_base:
     learning_rate: 0.2
     learning_rate_decay:
       enabled: true
-      decay_factor: 0.99884937                                    # Decay factor per episode | 0.99925 (4000) | 0.999625604 (8000) | 0.9997005 (10000)
+      decay_factor: 0.99925                                    # Decay factor per episode | 0.99925 (4000) | 0.999625604 (8000) | 0.9997005 (10000)
       learning_rate_min: 0.01                                  # Minimum learning rate
   # Agent Configuration
   agent_config:
@@ -170,6 +170,7 @@ reward_base:
     # --- Principal Reward Components ---
     principal_reward:
       enabled: true
+      normalized_reward_mode: true        # true: usa costos/rewards acotados por formula; false: comportamiento legacy
       reward_principal_name: lagrange_reward
       module_path: rewards.lagrange_reward_calculator
       class_name: LagrangeRewardCalculator
@@ -203,8 +204,8 @@ reward_base:
             use_sqrt: false
             setpoint: 0.0
             per_var:
-              pendulum_angle: {scaled: 0.25, min_factor: 0.0, max_factor: 1.0}
-              cart_position:  {scaled: 0.25, min_factor: 0.0, max_factor: 1.0, invert: false}
+              pendulum_angle: {scaled: 0.5, min_factor: 0.0, max_factor: 1.0}
+              cart_position:  {scaled: 0.5, min_factor: 0.0, max_factor: 1.0, invert: false}
           L_u:
             enabled: true
             type: exp
@@ -217,12 +218,13 @@ reward_base:
     # --- Coordination Reward ---
     coordination_reward:
       enabled: true
+      normalized_reward_mode: true        # true: normaliza el bonus por progreso relativo; false: comportamiento legacy
       reward_name: coordination_global_progress
       module_path: rewards.coordination_reward_handler
       class_name: CoordinationRewardHandler
       reward_mode: task_progress_credit_assignment                    #(decorativo) se podría escalar a otras configuraciones
       assign_mode: per_var                                            #(decorativo) se podría escalar a otras configuraciones
-      global_weight: 12
+      global_weight: 12                                                  # Escala legacy si normalized_reward_mode=false
       potential_features: [L_e, L_edot]
       potential_weights:
         L_e:
@@ -232,7 +234,7 @@ reward_base:
           pendulum_angle: 0.5
           cart_position: 0.5
       progress_positive_only: true                                    #*Si llegara a ser False requiere de implementar un "progress_clip_min"
-      progress_clip_max: 0.02
+      progress_clip_max: 0.01
       contribution_error_signal: error_{var_obj}
       contribution_effort_signal: u_alloc_{var_obj}
       correction_signs:
@@ -243,6 +245,7 @@ reward_base:
     # --- Extra Rewards ---
     extra_rewards:
       enabled: false
+      normalized_reward_mode: false       # true: normaliza penalizaciones, bonus e incentivos por familias
       reward_extra_name: extra_rewards
       module_path: rewards.extra_rewards_handler
       class_name: ExtraRewardsHandler

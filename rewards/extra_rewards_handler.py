@@ -39,6 +39,7 @@ class ExtraRewardsHandler:
             config (dict): Configuración de extra_rewards
         """
         self.config = config
+        self.normalized_reward_mode = config.get('normalized_reward_mode', False)
         
         # Extraer configuraciones de cada approach
         self.penalty_config = config['penalty_approach']
@@ -181,44 +182,70 @@ class ExtraRewardsHandler:
                     extra_conditional_dynamic_incentive_<var>: float
                     extra_total_<var>: float
         """
-        total_extra = 0.0
         flat = {}
         
         # Obtener var_objs precomputados
         var_objs = self.var_objs
+        normalization_bounds = self._compute_extra_normalization_bounds(extra_reward_component, var_objs)
         
         # Inicializar acumulador per-var_obj
         var_totals = {var: 0.0 for var in var_objs}
+        family_totals = {
+            var: {'penalty': 0.0, 'bonus': 0.0, 'incentive': 0.0}
+            for var in var_objs
+        }
         
         # 1. Penalties
         penalty_total, penalty_flat = self._evaluate_penalties(extra_reward_component, var_objs)
-        total_extra += penalty_total
         flat.update(penalty_flat)
         for var in var_objs:
-            var_totals[var] += penalty_flat[f'extra_penalty_instantaneous_{var}']
-            var_totals[var] += penalty_flat[f'extra_penalty_{var}']
+            penalty_var = (
+                penalty_flat[f'extra_penalty_instantaneous_{var}']
+                + penalty_flat[f'extra_penalty_{var}']
+            )
+            var_totals[var] += penalty_var
+            family_totals[var]['penalty'] += penalty_var
         
         # 2. Bonuses
         bonus_total, bonus_flat = self._evaluate_bonuses(
             extra_reward_component, reward_component, termination_flag, current_time_sec, var_objs
         )
-        total_extra += bonus_total
         flat.update(bonus_flat)
         for var in var_objs:
-            var_totals[var] += bonus_flat[f'extra_bonus_goal_{var}']
-            var_totals[var] += bonus_flat[f'extra_bonus_band_{var}']
+            bonus_var = (
+                bonus_flat[f'extra_bonus_goal_{var}']
+                + bonus_flat[f'extra_bonus_band_{var}']
+            )
+            var_totals[var] += bonus_var
+            family_totals[var]['bonus'] += bonus_var
         
         # 3. Conditional
         cond_total, cond_flat = self._evaluate_conditional(extra_reward_component, var_objs)
-        total_extra += cond_total
         flat.update(cond_flat)
         for var in var_objs:
-            var_totals[var] += cond_flat[f'extra_conditional_dynamic_penalty_{var}']
-            var_totals[var] += cond_flat[f'extra_conditional_dynamic_incentive_{var}']
+            conditional_penalty_var = cond_flat[f'extra_conditional_dynamic_penalty_{var}']
+            conditional_incentive_var = cond_flat[f'extra_conditional_dynamic_incentive_{var}']
+            var_totals[var] += conditional_penalty_var + conditional_incentive_var
+            family_totals[var]['penalty'] += conditional_penalty_var
+            family_totals[var]['incentive'] += conditional_incentive_var
         
-        # Total per-var_obj
+        normalized_totals, normalization_flat = self._compute_extra_normalized_totals(
+            family_totals,
+            normalization_bounds,
+            var_objs
+        )
+        flat.update(normalization_flat)
+
+        total_extra = 0.0
         for var in var_objs:
-            flat[f'extra_total_{var}'] = var_totals[var]
+            flat[f'extra_raw_total_{var}'] = var_totals[var]
+            if self.normalized_reward_mode:
+                flat[f'extra_total_{var}'] = normalized_totals[var]
+            else:
+                flat[f'extra_total_{var}'] = var_totals[var]
+            total_extra += flat[f'extra_total_{var}']
+        if self.normalized_reward_mode and var_objs:
+            total_extra /= len(var_objs)
         
         self.last_extra_reward_params_record = flat
         return total_extra, flat
@@ -327,6 +354,170 @@ class ExtraRewardsHandler:
 
         normalized_distance = (value - setpoint) / scaled
         return weight * math.exp(-(normalized_distance ** 2))
+
+    def _safe_unit_ratio(self, value, bound):
+        if bound <= 0.0:
+            return 0.0
+        return min(1.0, max(0.0, value / bound))
+
+    def _compute_extra_normalization_bounds(self, extra_reward_component, var_objs):
+        """
+        Construye cotas declarativas por familia sin usar min/max observado.
+        """
+        bounds = {
+            var: {'penalty': 0.0, 'bonus': 0.0, 'incentive': 0.0}
+            for var in var_objs
+        }
+        if not var_objs:
+            return bounds
+
+        if self.inst_penalty_rule:
+            method, coeff = self.inst_penalty_rule
+            if method == 'quadratic':
+                next_episode_time = self.episode_time + 1.0
+                penalty_bound = abs(coeff * (next_episode_time ** 2))
+            else:
+                penalty_bound = abs(coeff)
+            per_var_bound = penalty_bound / len(var_objs)
+            for var in var_objs:
+                bounds[var]['penalty'] += per_var_bound
+
+        for _, var_obj, method, weight in self.delta_rules:
+            max_delta = 2.0
+            if method == 'quadratic':
+                bounds[var_obj]['penalty'] += weight * (max_delta ** 2)
+            else:
+                bounds[var_obj]['penalty'] += weight * max_delta
+
+        if self.goal_bonus_rule:
+            if self.goal_bonus_rule['method'] == 'static':
+                goal_bound = abs(self.goal_bonus_rule['static_val'])
+            else:
+                goal_bound = abs(self.goal_bonus_rule['decay'].get('base_value', 0.0))
+            for var in var_objs:
+                bounds[var]['bonus'] += goal_bound
+
+        for var, range_entries in self.band_ranges.items():
+            if var not in bounds:
+                continue
+            n_steps = self._get_band_window_steps(extra_reward_component, range_entries)
+            gate_bound = self._compute_band_gate_bound(var)
+            interval_bound = n_steps * self.band_per_step_bonus * gate_bound
+            remaining_bound = max(
+                0.0,
+                self.band_max_bonus.get(var, 0.0) - self.accumulated_band_bonus.get(var, 0.0)
+            )
+            bounds[var]['bonus'] += min(interval_bound, remaining_bound)
+
+        for _, var_obj, method, weight, _, _, _, _ in self.dyn_pen_rules:
+            signal_bound = 1.0
+            if method == 'quadratic':
+                bounds[var_obj]['penalty'] += weight * (signal_bound ** 2)
+            else:
+                bounds[var_obj]['penalty'] += weight * signal_bound
+
+        for _, var_obj, method, cfg in self.dyn_inc_rules:
+            bounds[var_obj]['incentive'] += self._compute_incentive_bound(method, cfg)
+
+        return bounds
+
+    def _get_band_window_steps(self, extra_reward_component, range_entries):
+        lengths = []
+        for v_name, _, _ in range_entries:
+            series = extra_reward_component.get(v_name, [])
+            if series:
+                lengths.append(len(series))
+        return min(lengths) if lengths else 0
+
+    def _compute_band_gate_bound(self, var_obj):
+        if var_obj not in self.band_gate_rules:
+            return 1.0
+
+        gate_bound = 1.0
+        for _, _, _, _, _, max_factor, _ in self.band_gate_rules[var_obj]:
+            gate_bound *= max(0.0, max_factor)
+        return gate_bound
+
+    def _compute_incentive_bound(self, method, cfg):
+        if method != 'adaptative':
+            return abs(cfg.get('y_max', 0.0))
+
+        reward_mode = cfg.get('reward_mode', 'legacy')
+        uses_tracking_shape = (
+            reward_mode == 'tanh_tracking'
+            or 'track_weight' in cfg
+            or 'track_scaled' in cfg
+            or 'base_weight' in cfg
+            or 'base_scaled' in cfg
+        )
+
+        if reward_mode in {
+            'capture_directional_effort',
+            'directional_dense',
+            'directional_effort'
+        }:
+            return abs(cfg.get('weight', 0.0))
+
+        if uses_tracking_shape:
+            return (
+                abs(cfg.get('track_weight', 0.0))
+                + abs(cfg.get('base_weight', 0.0))
+                + abs(cfg.get('band_bonus_per_step', 0.0))
+            )
+
+        f_cfg = cfg.get('f_reward', {})
+        return abs(cfg.get('y_max', 0.0) * f_cfg.get('weight', 0.0))
+
+    def _compute_extra_normalized_totals(self, family_totals, bounds, var_objs):
+        normalized_totals = {}
+        flat = {
+            'extra_normalized_reward_mode': float(self.normalized_reward_mode)
+        }
+
+        for var in var_objs:
+            penalty_bound = bounds[var]['penalty']
+            bonus_bound = bounds[var]['bonus']
+            incentive_bound = bounds[var]['incentive']
+
+            penalty_cost_01 = self._safe_unit_ratio(
+                abs(min(0.0, family_totals[var]['penalty'])),
+                penalty_bound
+            )
+            bonus_reward_01 = self._safe_unit_ratio(
+                max(0.0, family_totals[var]['bonus']),
+                bonus_bound
+            )
+            incentive_reward_01 = self._safe_unit_ratio(
+                max(0.0, family_totals[var]['incentive']),
+                incentive_bound
+            )
+
+            positive_family_count = 0
+            if bonus_bound > 0.0:
+                positive_family_count += 1
+            if incentive_bound > 0.0:
+                positive_family_count += 1
+
+            if positive_family_count > 0:
+                positive_reward_01 = (
+                    bonus_reward_01 + incentive_reward_01
+                ) / positive_family_count
+            else:
+                positive_reward_01 = 0.0
+
+            normalized_total = positive_reward_01 - penalty_cost_01
+            normalized_totals[var] = normalized_total
+
+            flat[f'extra_penalty_bound_{var}'] = penalty_bound
+            flat[f'extra_bonus_bound_{var}'] = bonus_bound
+            flat[f'extra_incentive_bound_{var}'] = incentive_bound
+            flat[f'extra_penalty_total_01_{var}'] = penalty_cost_01
+            flat[f'extra_bonus_total_01_{var}'] = bonus_reward_01
+            flat[f'extra_incentive_total_01_{var}'] = incentive_reward_01
+            flat[f'extra_positive_total_01_{var}'] = positive_reward_01
+            flat[f'extra_total_01_{var}'] = normalized_total
+
+        return normalized_totals, flat
 
     def _resolve_incentive_bucket(self, reward_mode, cfg):
         """
