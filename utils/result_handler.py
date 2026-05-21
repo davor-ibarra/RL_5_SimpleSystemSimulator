@@ -11,6 +11,7 @@ Outputs:
 - metadata.json: Snapshot de configuración
 - chunks/episode_chunk_*.json: Datos detallados por chunks
 - summary.xlsx: Fila por episodio (auto-generada desde end_episode_data + interval_data)
+- summary.csv: Copia tabular liviana para visualizacion eficiente
 - agent_state/agent_state_ep_*.xlsx: Estado del agente (Excel con hojas por agente)
 """
 
@@ -148,6 +149,7 @@ class ResultHandler:
             return
         
         filepath = self.get_summary_filepath()
+        csv_filepath = self.get_summary_csv_filepath()
         
         # Crear DataFrame desde filas
         df = pd.DataFrame(self.summary_rows)
@@ -163,7 +165,9 @@ class ResultHandler:
             remaining = [c for c in df.columns if c not in existing_first]
             df = df[existing_first + remaining]
         
-        # Escribir a Excel
+        # Escribir a CSV y Excel. CSV acelera la visualizacion sin cambiar el
+        # contrato historico de summary.xlsx.
+        df.to_csv(csv_filepath, index=False)
         df.to_excel(filepath, index=False)
     
     def save_agent_state_learn_dict(self, state_dict, episode_id):
@@ -263,7 +267,16 @@ class ResultHandler:
             str: Ruta completa del archivo de resumen
         """
         return os.path.join(self.output_dir, 'summary.xlsx')
-    
+
+    def get_summary_csv_filepath(self):
+        """
+        Genera la ruta del archivo de resumen CSV.
+
+        Returns:
+            str: Ruta completa del archivo de resumen CSV
+        """
+        return os.path.join(self.output_dir, 'summary.csv')
+
     def get_agent_state_filepath(self, episode_id):
         """
         Genera la ruta del archivo de estado del agente.
@@ -313,12 +326,16 @@ class ResultHandler:
         """
         if not HAS_PANDAS:
             return None
-        
+
+        csv_filepath = self.get_summary_csv_filepath()
         filepath = self.get_summary_filepath()
-        
+
+        if os.path.exists(csv_filepath):
+            return pd.read_csv(csv_filepath)
+
         if not os.path.exists(filepath):
             return None
-        
+
         return pd.read_excel(filepath)
     
     def flatten_episode_to_steps(self, episode_data):

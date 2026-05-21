@@ -132,6 +132,13 @@ reward_base:
   # --- 1. Reward Configuration ---
   reward_config:
     reward_approach: controller_reward                # unique_for_all_reward | controller_reward | individual_reward (**ojo que no esta normalizando)
+    reward_composition:
+      enabled: true
+      strict_weight_sum: true
+      block_weights:
+        principal_reward: 0.7
+        coordination_reward: 0.3
+        extra_rewards: 0.0
     # Credit Assignment
     individual_reward_params:
       method: lineal_combination
@@ -215,6 +222,15 @@ reward_base:
             per_var:
               pendulum_angle: {scaled: 0.25, min_factor: 0.0, max_factor: 1.0}
               cart_position:  {scaled: 0.25, min_factor: 0.0, max_factor: 1.0}
+      feature_budget_conservation:
+        enabled: false
+        strict_weight_sum: true
+        redistribution:
+          L_e:    {L_e: 1.0}
+          L_edot: {L_e: 1.0}
+          #L_I:    {L_e: 1.0}
+          L_u:    {L_e: 1.0}
+          #L_delta_u: {L_e: 1.0}
     # --- Coordination Reward ---
     coordination_reward:
       enabled: true

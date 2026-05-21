@@ -1,7 +1,7 @@
 import logging
 import os
 import json
-from typing import Dict, Any, List, Union, Optional
+from typing import Dict, Any, List, Union, Optional, Tuple
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
@@ -21,7 +21,13 @@ class MatplotlibPlotGenerator:
     Applies styling based on plot configuration using a common helper method.
     """
     def __init__(self):
+        self._summary_cache: Dict[Tuple[str, Optional[Tuple[str, ...]]], pd.DataFrame] = {}
         logger.info("MatplotlibPlotGenerator instance created.")
+
+    def clear_cache(self):
+        """Libera datos tabulares cacheados entre corridas de visualizacion."""
+        self._summary_cache.clear()
+        gc.collect()
 
     # --- Método Helper Centralizado para Estilos ---
 
@@ -108,7 +114,10 @@ class MatplotlibPlotGenerator:
         grid_visible = cfg.get('grid_on', False)
         # No mostrar grid en heatmaps para evitar desorden visual
         is_heatmap = plot_config_data.get('type') == 'heatmap'
-        ax.grid(visible=(grid_visible and not is_heatmap), linestyle='--', linewidth=0.5, alpha=0.6)
+        if grid_visible and not is_heatmap:
+            ax.grid(True, linestyle='--', linewidth=0.5, alpha=0.6)
+        else:
+            ax.grid(False)
 
         # 6. --- Leyenda ---
         show_legend_cfg = cfg.get('show_legend', False)
@@ -183,18 +192,51 @@ class MatplotlibPlotGenerator:
 
     # --- Métodos Privados para Cargar Datos ---
 
-    def _load_summary_data(self, output_root_path_plot: str) -> Optional[pd.DataFrame]:
-        """Carga los datos de resumen desde summary.xlsx."""
-        summary_path = os.path.join(output_root_path_plot, 'summary.xlsx')
-        if not os.path.exists(summary_path):
-            logger.error(f"Archivo de resumen no encontrado: {summary_path}")
+    def _normalize_required_columns(self, required_columns: Optional[List[str]]) -> Optional[List[str]]:
+        """Normaliza la lista de columnas solicitadas preservando orden."""
+        if not required_columns:
             return None
+
+        normalized = []
+        seen = set()
+        for col in required_columns:
+            if not col or col in seen:
+                continue
+            normalized.append(col)
+            seen.add(col)
+        return normalized or None
+
+    def _load_summary_data(self, output_root_path_plot: str, required_columns: Optional[List[str]] = None) -> Optional[pd.DataFrame]:
+        """Carga datos de resumen priorizando summary.csv y columnas necesarias."""
+        summary_csv_path = os.path.join(output_root_path_plot, 'summary.csv')
+        summary_xlsx_path = os.path.join(output_root_path_plot, 'summary.xlsx')
+        columns = self._normalize_required_columns(required_columns)
+        cache_key = (output_root_path_plot, tuple(columns) if columns else None)
+
+        if cache_key in self._summary_cache:
+            return self._summary_cache[cache_key]
+
         try:
-            df = pd.read_excel(summary_path, engine='openpyxl' if self._check_openpyxl() else None)
-            logger.info(f"Datos de resumen cargados desde {summary_path} ({len(df)} filas).")
+            if os.path.exists(summary_csv_path):
+                usecols = (lambda col: col in columns) if columns else None
+                df = pd.read_csv(summary_csv_path, usecols=usecols)
+                logger.info(f"Datos de resumen cargados desde {summary_csv_path} ({len(df)} filas, {len(df.columns)} columnas).")
+            elif os.path.exists(summary_xlsx_path):
+                usecols = (lambda col: col in columns) if columns else None
+                df = pd.read_excel(
+                    summary_xlsx_path,
+                    usecols=usecols,
+                    engine='openpyxl' if self._check_openpyxl() else None
+                )
+                logger.info(f"Datos de resumen cargados desde {summary_xlsx_path} ({len(df)} filas, {len(df.columns)} columnas).")
+            else:
+                logger.error(f"Archivo de resumen no encontrado: {summary_csv_path} ni {summary_xlsx_path}")
+                return None
+
+            self._summary_cache[cache_key] = df
             return df
         except Exception as e:
-            logger.error(f"Error cargando archivo de resumen '{summary_path}': {e}", exc_info=True)
+            logger.error(f"Error cargando datos de resumen desde '{output_root_path_plot}': {e}", exc_info=True)
             return None
     
     def _load_detailed_data(self, output_root_path_plot: str) -> Optional[pd.DataFrame]:
@@ -326,7 +368,7 @@ class MatplotlibPlotGenerator:
             return df_grid
         except ValueError as e_sheet: # Específicamente para error de nombre de hoja
             if 'Worksheet named' in str(e_sheet) or 'No sheet named' in str(e_sheet):
-                logger.error(f"Heatmap ('{log_name_ref}'): No se encontró la hoja '{sheet_name}' en {heatmap_data_path}. Verificar 'name' en config YAML y si HeatmapGenerator creó la hoja.")
+                logger.warning(f"Heatmap ('{log_name_ref}'): No se encontró la hoja '{sheet_name}' en {heatmap_data_path}. Probablemente no hubo registros para sus filtros.")
             else:
                 logger.error(f"Error de valor leyendo hoja '{sheet_name}' para heatmap '{log_name_ref}': {e_sheet}", exc_info=True)
             return None
@@ -347,7 +389,7 @@ class MatplotlibPlotGenerator:
 
     # --- Método Principal de Generación ---
 
-    def generate_plot(self, plot_config_data: Dict[str, Any], output_root_path_plot: str):
+    def generate_plot(self, plot_config_data: Dict[str, Any], output_root_path_plot: str) -> bool:
         """Genera un plot basado en la configuración dada."""
         plot_type = plot_config_data.get("type")
         plot_index = plot_config_data.get('_internal_plot_index','?') # Índice para logging/defaults
@@ -364,7 +406,7 @@ class MatplotlibPlotGenerator:
 
         if not plot_type:
             logger.error(f"Plot config ({log_name_ref}) no tiene 'type'. Saltando.")
-            return
+            return False
 
         logger.info(f"Generando plot ({log_name_ref}) (Tipo: {plot_type}) -> {output_filename}")
 
@@ -376,7 +418,10 @@ class MatplotlibPlotGenerator:
             # Heatmap carga sus datos DENTRO de _generate_heatmap_plot
             pass
         elif data_source_type == "summary":
-            data_loaded = self._load_summary_data(output_root_path_plot)
+            data_loaded = self._load_summary_data(
+                output_root_path_plot,
+                required_columns=plot_config_data.get('_required_columns')
+            )
             if data_loaded is None or data_loaded.empty:
                 logger.warning(f"No se pudieron cargar datos de resumen para plot ({log_name_ref}). Se generará un plot vacío si es posible.")
                 # No retornar aún, permitir que la función de ploteo maneje data=None
@@ -388,7 +433,7 @@ class MatplotlibPlotGenerator:
         else:
             # Para plots que no son heatmap, la fuente es requerida
             logger.error(f"Plot config ({log_name_ref}) tiene tipo '{plot_type}' pero falta 'source' ('summary' o 'detailed'). Saltando.")
-            return
+            return False
 
         # --- Creación de Figura y Ejes ---
         figsize = (style_config.get('figsize_w', 12), style_config.get('figsize_h', 6))
@@ -411,8 +456,7 @@ class MatplotlibPlotGenerator:
                 plot_generated = True
             elif plot_type == "heatmap":
                 # Pasar fig también porque heatmap necesita añadir colorbar
-                self._generate_heatmap_plot(ax, fig, plot_config_data, output_root_path_plot)
-                plot_generated = True
+                plot_generated = self._generate_heatmap_plot(ax, fig, plot_config_data, output_root_path_plot)
             else:
                 # Este caso no debería ocurrir si type se valida antes, pero por seguridad
                 plt.close(fig) # Cerrar figura no usada
@@ -431,19 +475,26 @@ class MatplotlibPlotGenerator:
 
                 plt.savefig(output_path, bbox_inches='tight') # bbox_inches='tight' es importante
                 logger.info(f"Plot guardado en: {output_path}")
+                return True
             else:
                 logger.warning(f"No se generó contenido para el plot ({log_name_ref}). No se guardará archivo.")
+                return False
 
         except NotImplementedError as nie:
             logger.error(f"Error en plot ({log_name_ref}): {nie}")
+            return False
         except FileNotFoundError as fnfe: # Errores de carga de datos específicos
             logger.error(f"Error en plot ({log_name_ref}): Archivo de datos no encontrado - {fnfe}")
+            return False
         except ValueError as ve: # Errores de datos o configuración inválidos
             logger.error(f"Error en plot ({log_name_ref}): Datos o configuración inválidos - {ve}")
+            return False
         except KeyError as ke: # Errores por claves faltantes en config o datos
             logger.error(f"Error en plot ({log_name_ref}): Clave faltante - {ke}")
+            return False
         except Exception as e: # Capturar cualquier otro error inesperado
             logger.error(f"Error inesperado generando plot ({log_name_ref}): {e}", exc_info=True)
+            return False
         finally:
             # 2.7: Asegurar limpieza de datos y que la figura se cierre siempre
             if 'data_loaded' in locals() and data_loaded is not None:
@@ -567,10 +618,13 @@ class MatplotlibPlotGenerator:
 
         # Preparar datos para contar/agrupar
         try:
-            if group_size and 'episode' in df.columns:
-                df['episode'] = pd.to_numeric(df['episode'], errors='coerce').dropna().astype(int)
+            episode_col = 'episode' if 'episode' in df.columns else 'episode_id' if 'episode_id' in df.columns else None
+            if group_size and episode_col:
+                df[episode_col] = pd.to_numeric(df[episode_col], errors='coerce')
+                df = df.dropna(subset=[episode_col])
+                df[episode_col] = df[episode_col].astype(int)
                 if not df.empty:
-                    df['episode_group'] = (df['episode'] // group_size) * group_size
+                    df['episode_group'] = (df[episode_col] // group_size) * group_size
                     # Contar ocurrencias de 'variable' dentro de cada grupo
                     counts = df.groupby('episode_group')[variable].value_counts().unstack(fill_value=0)
                     # 2.7: Asignar título de leyenda explícitamente para barras apiladas
@@ -658,7 +712,7 @@ class MatplotlibPlotGenerator:
                                 color=colors)
             ax.set_xticklabels(counts_to_plot.index)
 
-    def _generate_heatmap_plot(self, ax: plt.Axes, fig: plt.Figure, plot_config_data: Dict, output_root_path_plot: str):
+    def _generate_heatmap_plot(self, ax: plt.Axes, fig: plt.Figure, plot_config_data: Dict, output_root_path_plot: str) -> bool:
         """Genera un gráfico de heatmap. Usa extent y aplica límites estrictos."""
         style_config = plot_config_data.get('config', {})
         plot_name_cfg = plot_config_data.get('name'); plot_index = plot_config_data.get('_internal_plot_index', '?')
@@ -666,9 +720,8 @@ class MatplotlibPlotGenerator:
 
         grid_df = self._load_heatmap_data(output_root_path_plot, plot_config_data)
         if grid_df is None or grid_df.empty:
-            logger.warning(f"Datos vacíos para heatmap ({log_name_ref}). Plot vacío.")
-            ax.text(0.5, 0.5, 'Datos Heatmap No Disponibles', **{'ha':'center', 'va':'center', 'color':'red', 'fontsize':12})
-            return
+            logger.warning(f"Datos vacíos para heatmap ({log_name_ref}). Plot omitido.")
+            return False
 
         data_values = grid_df.values
         y_bin_centers = grid_df.index.to_numpy()
@@ -716,3 +769,4 @@ class MatplotlibPlotGenerator:
         # Asignar nombres de ejes (para que _apply_common los use)
         ax.set_xlabel(grid_df.columns.name)
         ax.set_ylabel(grid_df.index.name)
+        return True

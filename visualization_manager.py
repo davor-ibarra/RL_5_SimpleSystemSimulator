@@ -10,6 +10,7 @@ import os
 import gc
 import logging
 import numpy as np
+from typing import Dict, List, Optional
 
 # Importar matplotlib
 import matplotlib
@@ -58,6 +59,41 @@ class VisualizationManager:
             raise ValueError("HeatmapGenerator es requerido.")
         if not os.path.isdir(results_folder_path):
             self.logger.error(f"[VisualizationManager] Carpeta de resultados no válida: {results_folder_path}")
+
+    def _collect_summary_required_columns(self, plot_configs: List[Dict]) -> Optional[List[str]]:
+        """Recolecta columnas necesarias para cargar summary una sola vez."""
+        required_columns = []
+        seen = set()
+
+        def add_column(column_name):
+            if column_name and column_name not in seen:
+                required_columns.append(column_name)
+                seen.add(column_name)
+
+        for plot_cfg in plot_configs:
+            if not isinstance(plot_cfg, dict):
+                continue
+            if not plot_cfg.get("enabled", True) or plot_cfg.get("source") != "summary":
+                continue
+
+            plot_type = plot_cfg.get("type")
+            plot_style_cfg = plot_cfg.get("config", {})
+
+            if plot_type in ("line", "scatter"):
+                add_column(plot_cfg.get("x_variable"))
+                add_column(plot_cfg.get("y_variable"))
+            elif plot_type in ("bar", "histogram"):
+                add_column(plot_cfg.get("variable"))
+
+            if plot_type == "bar" and plot_style_cfg.get("group_size"):
+                add_column("episode")
+                add_column("episode_id")
+
+            if plot_style_cfg.get("filter_termination_reason"):
+                add_column("termination_reason")
+                add_column("end_termination_reason")
+
+        return required_columns or None
 
     def _generate_heatmap_data_if_needed(self):
         """Genera datos para heatmaps si están configurados."""
@@ -111,6 +147,7 @@ class VisualizationManager:
             return
 
         self.logger.info(f"[VisualizationManager_run] Iniciando generación de hasta {len(plot_configs_raw)} plots configurados...")
+        summary_required_columns = self._collect_summary_required_columns(plot_configs_raw)
 
         # 2.11: Generar datos de heatmap PRIMERO
         self._generate_heatmap_data_if_needed()
@@ -121,6 +158,7 @@ class VisualizationManager:
         num_generated = 0
         num_skipped_disabled = 0
         num_skipped_invalid = 0
+        num_skipped_no_content = 0
         for i, plot_cfg_original in enumerate(plot_configs_raw):
             # Validar formato y si está habilitado
             if not isinstance(plot_cfg_original, dict):
@@ -137,17 +175,22 @@ class VisualizationManager:
             # (MatplotlibPlotGenerator ya lo recibe en Paso 1 y 2)
             plot_cfg_copy = plot_cfg_original.copy()
             plot_cfg_copy['_internal_plot_index'] = i
+            if plot_cfg_copy.get("source") == "summary" and summary_required_columns:
+                plot_cfg_copy['_required_columns'] = summary_required_columns
 
             plot_name = plot_cfg_copy.get("name", f"plot_{plot_cfg_copy.get('type', 'unknown')}_{i+1}")
             self.logger.info(f"--- Generando Plot #{i+1}: '{plot_name}' (Tipo: {plot_cfg_copy.get('type', 'N/A')}) ---")
 
             try:
                 # 2.13: Llamar a la interfaz PlotGenerator
-                self.plot_generator.generate_plot(
+                generated = self.plot_generator.generate_plot(
                     plot_config_data=plot_cfg_copy,
                     output_root_path_plot=self.results_folder_path
                 )
-                num_generated += 1
+                if generated:
+                    num_generated += 1
+                else:
+                    num_skipped_no_content += 1
             except NotImplementedError as nie:
                 self.logger.error(f"[VisualizationManager_run] Error generando plot '{plot_name}': Tipo de plot no implementado por PlotGenerator: {nie}")
             except FileNotFoundError as fnfe:
@@ -162,5 +205,8 @@ class VisualizationManager:
         self.logger.info(f"  - Intentados/Generados: {num_generated}")
         self.logger.info(f"  - Saltados (Deshabilitados): {num_skipped_disabled}")
         self.logger.info(f"  - Saltados (Inválidos): {num_skipped_invalid}")
+        self.logger.info(f"  - Saltados (Sin datos/contenido): {num_skipped_no_content}")
+        if hasattr(self.plot_generator, "clear_cache"):
+            self.plot_generator.clear_cache()
         plt.close('all') # Cerrar todas las figuras de matplotlib abiertas
         gc.collect()

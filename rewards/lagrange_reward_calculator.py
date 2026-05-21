@@ -25,6 +25,12 @@ class LagrangeRewardCalculator:
         self.config = config_main['reward_base']['reward_calculation']['principal_reward']
         self.method = self.config['method']
         self.normalized_reward_mode = self.config.get('normalized_reward_mode', False)
+        self.budget_conservation_config = self.config.get('feature_budget_conservation', {})
+        self.budget_conservation_enabled = (
+            self.normalized_reward_mode
+            and self.budget_conservation_config.get('enabled', False)
+        )
+        self.budget_conservation_strict = self.budget_conservation_config.get('strict_weight_sum', True)
 
         if self.method == 'lineal_combination':
             self.config_lineal_combination = self.config['lineal_combination_params']
@@ -40,6 +46,7 @@ class LagrangeRewardCalculator:
 
         self.var_objs = self._extract_var_objs()
         self.feature_weight_sum = self._compute_feature_weight_sum()
+        self.budget_redistribution = self._compile_budget_redistribution()
 
         self.feature_to_agent_weight_key = {
             'L_e': 'w_e',
@@ -89,6 +96,8 @@ class LagrangeRewardCalculator:
     def _compile_agent_jobs(self):
         self.agent_feature_jobs = []
         for feature_name, weight_key in self.feature_to_agent_weight_key.items():
+            if feature_name not in self.weights:
+                continue
             cfg = self.weights.get(feature_name, {})
             if isinstance(cfg, dict):
                 scaled = cfg.get('scaled', 1.0)
@@ -164,6 +173,91 @@ class LagrangeRewardCalculator:
         if not self.normalized_reward_mode:
             return raw_weight
         return max(0.0, raw_weight) / agent_weight_sum
+
+    def _compile_budget_redistribution(self):
+        """
+        Precompila el mapa declarativo source_feature -> [(target_feature, ratio)].
+        """
+        redistribution_config = self.budget_conservation_config.get('redistribution', {})
+        redistribution = {}
+
+        for source_feature, target_map in redistribution_config.items():
+            if source_feature not in self.weights:
+                continue
+            if not isinstance(target_map, dict) or not target_map:
+                raise ValueError(
+                    f"Budget redistribution for {source_feature} must define target weights"
+                )
+
+            target_total = 0.0
+            target_jobs = []
+            for target_feature, ratio in target_map.items():
+                if target_feature not in self.weights:
+                    raise ValueError(
+                        f"Budget redistribution target {target_feature} is not an active feature"
+                    )
+                if ratio < 0.0:
+                    raise ValueError(
+                        f"Budget redistribution ratio must be non-negative, got {ratio}"
+                    )
+                target_total += ratio
+                target_jobs.append((target_feature, ratio))
+
+            if self.budget_conservation_strict and abs(target_total - 1.0) > 1.0e-9:
+                raise ValueError(
+                    f"Budget redistribution for {source_feature} must sum 1.0, got {target_total}"
+                )
+
+            if target_total > 0.0 and not self.budget_conservation_strict:
+                target_jobs = [
+                    (target_feature, ratio / target_total)
+                    for target_feature, ratio in target_jobs
+                ]
+            redistribution[source_feature] = target_jobs
+
+        if self.budget_conservation_enabled and self.budget_conservation_strict:
+            for feature_name in self.weights.keys():
+                gate_cfg = self.feature_gates.get(feature_name, {})
+                if gate_cfg.get('enabled', False) and feature_name not in redistribution:
+                    raise ValueError(
+                        f"Enabled gate {feature_name} requires budget redistribution config"
+                    )
+
+        return redistribution
+
+    def _compute_budget_allocation(self, base_weights, gate_factors):
+        """
+        Calcula pesos efectivos conservando presupuesto si el modo esta activo.
+        """
+        effective_weights = {}
+        residual_weights = {}
+        for feature_name, base_weight in base_weights.items():
+            gate_factor = gate_factors.get(feature_name, 1.0)
+            gated_weight = base_weight * gate_factor
+            residual_weight = base_weight - gated_weight
+            effective_weights[feature_name] = gated_weight
+            residual_weights[feature_name] = residual_weight
+
+        if not self.budget_conservation_enabled:
+            return effective_weights, residual_weights
+
+        for source_feature, residual_weight in residual_weights.items():
+            if residual_weight <= 0.0:
+                continue
+
+            target_jobs = self.budget_redistribution.get(source_feature)
+            if not target_jobs:
+                if self.budget_conservation_strict:
+                    raise ValueError(
+                        f"Missing budget redistribution for gated feature {source_feature}"
+                    )
+                effective_weights[source_feature] += residual_weight
+                continue
+
+            for target_feature, ratio in target_jobs:
+                effective_weights[target_feature] += residual_weight * ratio
+
+        return effective_weights, residual_weights
 
     def _resolve_gate_config(self, feature_name, var_obj):
         gate_cfg = self.feature_gates.get(feature_name)
@@ -243,6 +337,7 @@ class LagrangeRewardCalculator:
         feature_contributions = {feature: 0.0 for feature in self.weights.keys()}
         controller_rewards = {}
         loop_cost_records = {}
+        budget_records = {}
         gate_records = {}
         feature_cost_records = {}
         contribution_records = {}
@@ -250,28 +345,55 @@ class LagrangeRewardCalculator:
         for var_obj, jobs in self.var_jobs.items():
             loop_reward = 0.0
             loop_cost_01 = 0.0
+            feature_values = {}
+            feature_costs = {}
+            base_weights = {}
+            raw_weights = {}
+            gate_factors = {}
+
             for flat_key, feature_name, weight, raw_weight, _, _, gate_cfg in jobs:
                 value = flat_reward_component[flat_key]
                 gate_factor = self._compute_gate_factor(flat_reward_component, gate_cfg)
                 value_cost_01 = self._normalized_input_cost(value)
-                gated_cost_01 = gate_factor * value_cost_01
 
                 aggregated_values[feature_name] += value
-                if self.normalized_reward_mode:
-                    contribution = -weight * gated_cost_01
-                else:
-                    contribution = -raw_weight * gate_factor * value
-
-                feature_contributions[feature_name] += contribution
-                loop_reward += contribution
-                loop_cost_01 += weight * gated_cost_01
+                feature_values[feature_name] = value
+                feature_costs[feature_name] = value_cost_01
+                base_weights[feature_name] = weight
+                raw_weights[feature_name] = raw_weight
+                gate_factors[feature_name] = gate_factor
 
                 feature_cost_records[f'principal_feature_cost_01_{feature_name}_{var_obj}'] = value_cost_01
                 gate_records[f'principal_gate_{feature_name}_{var_obj}'] = gate_factor
+
+            effective_weights, residual_weights = self._compute_budget_allocation(
+                base_weights,
+                gate_factors
+            )
+
+            for feature_name, value in feature_values.items():
+                if self.normalized_reward_mode:
+                    contribution = -effective_weights[feature_name] * feature_costs[feature_name]
+                else:
+                    contribution = (
+                        -raw_weights[feature_name]
+                        * gate_factors[feature_name]
+                        * value
+                    )
+
+                feature_contributions[feature_name] += contribution
+                loop_reward += contribution
+                loop_cost_01 += effective_weights[feature_name] * feature_costs[feature_name]
+
+                budget_records[f'principal_base_weight_{feature_name}_{var_obj}'] = base_weights[feature_name]
+                budget_records[f'principal_effective_weight_{feature_name}_{var_obj}'] = effective_weights[feature_name]
+                budget_records[f'principal_weight_residual_{feature_name}_{var_obj}'] = residual_weights[feature_name]
                 contribution_records[f'principal_contribution_{feature_name}_{var_obj}'] = contribution
 
             controller_rewards[var_obj] = loop_reward
             loop_cost_records[f'principal_loop_cost_01_{var_obj}'] = loop_cost_01
+            budget_records[f'principal_effective_weight_sum_{var_obj}'] = sum(effective_weights.values())
+            budget_records[f'principal_residual_weight_sum_{var_obj}'] = sum(residual_weights.values())
 
         global_reward = 0.0
         for feature_name, weight, raw_weight, _, _ in self.global_jobs:
@@ -299,6 +421,7 @@ class LagrangeRewardCalculator:
         reward_params_record = {
             'principal_reward': principal_reward,
             'principal_reward_normalized_mode': float(self.normalized_reward_mode),
+            'principal_budget_conservation_enabled': float(self.budget_conservation_enabled),
             'principal_cost_01': principal_cost_01,
             'principal_score_01': 1.0 - principal_cost_01,
             'principal_reward_bound_abs': 1.0,
@@ -309,6 +432,7 @@ class LagrangeRewardCalculator:
             reward_params_record[f'principal_feature_value_{feature_name}'] = value
             reward_params_record[f'principal_feature_reward_{feature_name}'] = feature_contributions[feature_name]
         reward_params_record.update(loop_cost_records)
+        reward_params_record.update(budget_records)
         reward_params_record.update(feature_cost_records)
         reward_params_record.update(gate_records)
         reward_params_record.update(contribution_records)
@@ -321,6 +445,7 @@ class LagrangeRewardCalculator:
         feature_contributions = {feature: 0.0 for feature in self.weights.keys()}
         controller_rewards = {}
         loop_cost_records = {}
+        budget_records = {}
         gate_records = {}
         feature_cost_records = {}
         contribution_records = {}
@@ -328,27 +453,58 @@ class LagrangeRewardCalculator:
         for var_obj, jobs in self.var_jobs.items():
             loop_reward = 0.0
             loop_cost_01 = 0.0
+            feature_values = {}
+            feature_costs = {}
+            base_weights = {}
+            raw_weights = {}
+            gate_factors = {}
+            exp_terms = {}
+
             for flat_key, feature_name, weight, raw_weight, scaled, setpoint, gate_cfg in jobs:
                 value = flat_reward_component[flat_key]
                 gate_factor = self._compute_gate_factor(flat_reward_component, gate_cfg)
                 exp_term = math.exp(-scaled * (value - setpoint) ** 2)
                 value_cost_01 = self._exponential_cost_01(value, scaled, setpoint)
-                if self.normalized_reward_mode:
-                    contribution = -gate_factor * weight * value_cost_01
-                else:
-                    contribution = -gate_factor * raw_weight * (1 - exp_term)
 
                 aggregated_values[feature_name] += value
-                feature_contributions[feature_name] += contribution
-                loop_reward += contribution
-                loop_cost_01 += gate_factor * weight * value_cost_01
+                feature_values[feature_name] = value
+                feature_costs[feature_name] = value_cost_01
+                base_weights[feature_name] = weight
+                raw_weights[feature_name] = raw_weight
+                gate_factors[feature_name] = gate_factor
+                exp_terms[feature_name] = exp_term
 
                 feature_cost_records[f'principal_feature_cost_01_{feature_name}_{var_obj}'] = value_cost_01
                 gate_records[f'principal_gate_{feature_name}_{var_obj}'] = gate_factor
+
+            effective_weights, residual_weights = self._compute_budget_allocation(
+                base_weights,
+                gate_factors
+            )
+
+            for feature_name, value in feature_values.items():
+                if self.normalized_reward_mode:
+                    contribution = -effective_weights[feature_name] * feature_costs[feature_name]
+                else:
+                    contribution = (
+                        -gate_factors[feature_name]
+                        * raw_weights[feature_name]
+                        * (1 - exp_terms[feature_name])
+                    )
+
+                feature_contributions[feature_name] += contribution
+                loop_reward += contribution
+                loop_cost_01 += effective_weights[feature_name] * feature_costs[feature_name]
+
+                budget_records[f'principal_base_weight_{feature_name}_{var_obj}'] = base_weights[feature_name]
+                budget_records[f'principal_effective_weight_{feature_name}_{var_obj}'] = effective_weights[feature_name]
+                budget_records[f'principal_weight_residual_{feature_name}_{var_obj}'] = residual_weights[feature_name]
                 contribution_records[f'principal_contribution_{feature_name}_{var_obj}'] = contribution
 
             controller_rewards[var_obj] = loop_reward
             loop_cost_records[f'principal_loop_cost_01_{var_obj}'] = loop_cost_01
+            budget_records[f'principal_effective_weight_sum_{var_obj}'] = sum(effective_weights.values())
+            budget_records[f'principal_residual_weight_sum_{var_obj}'] = sum(residual_weights.values())
 
         global_reward = 0.0
         for feature_name, weight, raw_weight, scaled, setpoint in self.global_jobs:
@@ -379,6 +535,7 @@ class LagrangeRewardCalculator:
         reward_params_record = {
             'principal_reward': principal_reward,
             'principal_reward_normalized_mode': float(self.normalized_reward_mode),
+            'principal_budget_conservation_enabled': float(self.budget_conservation_enabled),
             'principal_cost_01': principal_cost_01,
             'principal_score_01': 1.0 - principal_cost_01,
             'principal_reward_bound_abs': 1.0,
@@ -388,6 +545,7 @@ class LagrangeRewardCalculator:
             reward_params_record[f'principal_feature_value_{feature_name}'] = value
             reward_params_record[f'principal_feature_reward_{feature_name}'] = feature_contributions[feature_name]
         reward_params_record.update(loop_cost_records)
+        reward_params_record.update(budget_records)
         reward_params_record.update(feature_cost_records)
         reward_params_record.update(gate_records)
         reward_params_record.update(contribution_records)
@@ -398,6 +556,11 @@ class LagrangeRewardCalculator:
     def compute_agent_individual_reward(self, flat_reward_component, var_obj, agent_weights):
         agent_reward = 0.0
         agent_weight_sum = self._compute_agent_weight_sum(agent_weights)
+        feature_values = {}
+        feature_costs = {}
+        base_weights = {}
+        gate_factors = {}
+        exp_terms = {}
 
         if self.method == 'weighted_exponential':
             for feature_name, weight_key, scaled, setpoint in self.agent_feature_jobs:
@@ -408,11 +571,22 @@ class LagrangeRewardCalculator:
                 weight = self._effective_agent_weight(agent_weights, weight_key, agent_weight_sum)
                 gate_cfg = self._resolve_gate_config(feature_name, var_obj)
                 gate_factor = self._compute_gate_factor(flat_reward_component, gate_cfg)
+                feature_values[feature_name] = value
+                feature_costs[feature_name] = self._exponential_cost_01(value, scaled, setpoint)
+                base_weights[feature_name] = weight
+                gate_factors[feature_name] = gate_factor
+                exp_terms[feature_name] = math.exp(-scaled * (value - setpoint) ** 2)
+
+            effective_weights, _ = self._compute_budget_allocation(base_weights, gate_factors)
+            for feature_name, value in feature_values.items():
                 if self.normalized_reward_mode:
-                    agent_reward -= gate_factor * weight * self._exponential_cost_01(value, scaled, setpoint)
+                    agent_reward -= effective_weights[feature_name] * feature_costs[feature_name]
                 else:
-                    exp_term = math.exp(-scaled * (value - setpoint) ** 2)
-                    agent_reward -= gate_factor * weight * (1 - exp_term)
+                    agent_reward -= (
+                        gate_factors[feature_name]
+                        * base_weights[feature_name]
+                        * (1 - exp_terms[feature_name])
+                    )
         else:
             for feature_name, weight_key, _, _ in self.agent_feature_jobs:
                 flat_key = f"{feature_name}_{var_obj}"
@@ -422,10 +596,21 @@ class LagrangeRewardCalculator:
                 weight = self._effective_agent_weight(agent_weights, weight_key, agent_weight_sum)
                 gate_cfg = self._resolve_gate_config(feature_name, var_obj)
                 gate_factor = self._compute_gate_factor(flat_reward_component, gate_cfg)
+                feature_values[feature_name] = value
+                feature_costs[feature_name] = self._normalized_input_cost(value)
+                base_weights[feature_name] = weight
+                gate_factors[feature_name] = gate_factor
+
+            effective_weights, _ = self._compute_budget_allocation(base_weights, gate_factors)
+            for feature_name, value in feature_values.items():
                 if self.normalized_reward_mode:
-                    agent_reward -= gate_factor * weight * self._normalized_input_cost(value)
+                    agent_reward -= effective_weights[feature_name] * feature_costs[feature_name]
                 else:
-                    agent_reward -= gate_factor * weight * value
+                    agent_reward -= (
+                        gate_factors[feature_name]
+                        * base_weights[feature_name]
+                        * value
+                    )
 
         return agent_reward
 

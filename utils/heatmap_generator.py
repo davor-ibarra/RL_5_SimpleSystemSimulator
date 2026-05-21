@@ -291,6 +291,9 @@ class HeatmapGenerator:
             logger.warning("[HeatmapGenerator] No hay datos detallados para generar heatmaps.")
             return
         
+        skipped_heatmaps = []
+        written_sheets = 0
+
         # Crear ExcelWriter
         try:
             with pd.ExcelWriter(output_excel_target_filepath, engine='openpyxl') as writer:
@@ -328,6 +331,13 @@ class HeatmapGenerator:
                     
                     if not x_values or not y_values:
                         logger.warning(f"[HeatmapGenerator] No hay datos para heatmap '{sheet_name}'")
+                        skipped_heatmaps.append({
+                            'sheet_name': sheet_name,
+                            'x_variable': x_var,
+                            'y_variable': y_var,
+                            'filter_termination_reason': str(filter_reason),
+                            'reason': 'empty_after_filter'
+                        })
                         continue
                     
                     # Asegurar misma longitud
@@ -349,7 +359,15 @@ class HeatmapGenerator:
                     
                     # Escribir a Excel
                     df_grid.to_excel(writer, sheet_name=sheet_name)
+                    written_sheets += 1
                     logger.info(f"[HeatmapGenerator] Hoja '{sheet_name}' escrita con shape {df_grid.shape}")
+
+                if skipped_heatmaps:
+                    pd.DataFrame(skipped_heatmaps).to_excel(writer, sheet_name='_skipped_heatmaps', index=False)
+                    logger.info(f"[HeatmapGenerator] Heatmaps omitidos registrados: {len(skipped_heatmaps)}")
+
+                if written_sheets == 0 and not skipped_heatmaps:
+                    pd.DataFrame([{'message': 'no_heatmap_data'}]).to_excel(writer, sheet_name='_empty_heatmaps', index=False)
             
             logger.info(f"[HeatmapGenerator] Archivo Excel generado: {output_excel_target_filepath}")
             
