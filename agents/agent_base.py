@@ -44,7 +44,7 @@ class AgentBase:
         """
         self.agent_impl.reset_episode()
     
-    def build_agent_state(self, dynamic_state_dict, controller_gains_dict):
+    def build_agent_state(self, dynamic_state_dict, controller_gains_dict, extra_state_dict=None):
         """
         Construye el estado del agente.
         
@@ -55,7 +55,7 @@ class AgentBase:
         Returns:
             dict: Estado del agente
         """
-        return self.agent_impl.build_agent_state(dynamic_state_dict, controller_gains_dict)
+        return self.agent_impl.build_agent_state(dynamic_state_dict, controller_gains_dict, extra_state_dict)
     
     def select_action(self, agent_state):
         """

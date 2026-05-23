@@ -123,6 +123,8 @@ agent_base:
       kd_cart_position:        {enabled_agent: true, min: 0.0, max: 10.0, state_vars: []}
       pendulum_angle: {enabled_agent: false, min: 0.0, max: 0.5, bins: 2, state_vars: []}
       cart_position: {enabled_agent: false, min: 0.0, max: 2.0, bins: 2, state_vars: []}
+      coordination_debt_pendulum_angle: {enabled_agent: false, min: 0.0, max: 1.0, bins: 3, state_vars: []}
+      coordination_debt_cart_position: {enabled_agent: false, min: 0.0, max: 1.0, bins: 3, state_vars: []}
 # --- Reward Configuration ---
 reward_base:
   # --- 0. Reward Base Configuration ---
@@ -190,10 +192,10 @@ reward_base:
           L_delta_u: {weight: 0.15}            # Peso de la variación de acción de control
       weighted_exponential_params:
         features:
-          L_e:       {weight: 0.65, scaled: 5.0, setpoint: 0.0}
-          L_edot:    {weight: 0.3, scaled: 2.5, setpoint: 0.0}
+          L_e:       {weight: 0.6, scaled: 5.0, setpoint: 0.0}
+          L_edot:    {weight: 0.4, scaled: 2.5, setpoint: 0.0}
           L_I:       {weight: 0.0,  scaled: 1.0, setpoint: 0.0}
-          L_u:       {weight: 0.05, scaled: 1.0, setpoint: 0.0}
+          L_u:       {weight: 0.0, scaled: 1.0, setpoint: 0.0}
         feature_gates:
           L_e:
             enabled: false
@@ -205,31 +207,31 @@ reward_base:
               pendulum_angle: {scaled: 1.0, min_factor: 1.0, max_factor: 1.0}
               cart_position:  {scaled: 1.0, min_factor: 0.2, max_factor: 1.0, invert: false}
           L_edot:
-            enabled: true
+            enabled: false
             type: exp
             source: L_e_{var_obj}
             use_sqrt: false
             setpoint: 0.0
             per_var:
-              pendulum_angle: {scaled: 0.5, min_factor: 0.0, max_factor: 1.0}
+              pendulum_angle: {scaled: 0.5, min_factor: 0.4, max_factor: 1.0}
               cart_position:  {scaled: 0.5, min_factor: 0.0, max_factor: 1.0, invert: false}
           L_u:
-            enabled: true
+            enabled: false
             type: exp
             source: L_e_{var_obj}
             use_sqrt: false
             setpoint: 0.0
             per_var:
-              pendulum_angle: {scaled: 0.25, min_factor: 0.0, max_factor: 1.0}
-              cart_position:  {scaled: 0.25, min_factor: 0.0, max_factor: 1.0}
+              pendulum_angle: {scaled: 0.25, min_factor: 0.2, max_factor: 1.0}
+              cart_position:  {scaled: 0.25, min_factor: 0.2, max_factor: 1.0}
       feature_budget_conservation:
         enabled: false
-        strict_weight_sum: true
+        strict_weight_sum: false
         redistribution:
-          L_e:    {L_e: 1.0}
+          #L_e:    {L_e: 1.0}
           L_edot: {L_e: 1.0}
           #L_I:    {L_e: 1.0}
-          L_u:    {L_e: 1.0}
+          L_u:    {L_e: 0.5, L_edot: 0.5}
           #L_delta_u: {L_e: 1.0}
     # --- Coordination Reward ---
     coordination_reward:
@@ -244,11 +246,11 @@ reward_base:
       potential_features: [L_e, L_edot]
       potential_weights:
         L_e:
-          pendulum_angle: 0.7
-          cart_position: 0.3
+          pendulum_angle: 0.6
+          cart_position: 0.6
         L_edot:
-          pendulum_angle: 0.5
-          cart_position: 0.5
+          pendulum_angle: 0.4
+          cart_position: 0.4
       progress_positive_only: true                                    #*Si llegara a ser False requiere de implementar un "progress_clip_min"
       progress_clip_max: 0.01
       contribution_error_signal: error_{var_obj}
@@ -258,6 +260,45 @@ reward_base:
         cart_position: 1.0
       epsilon_credit: 1.0e-6
       credit_reduction_mode: average
+      potential_weight_normalization:
+        enabled: false
+        strict_weight_sum: false
+        tolerance: 1.0e-9
+      coordination_bonus_clip:
+        enabled: false
+        progress_max: 0.01
+      local_error_decay:
+        enabled: false
+        method: hard                                                # linear | exponential | hard
+        error_signal: error_{var_obj}
+        source_reduction: rms                                   # keep_last | mean | mean_abs | rms
+        hard_zero_above_threshold: false
+        thresholds:
+          pendulum_angle: 0.4
+          cart_position: 0.3
+        lambdas:
+          pendulum_angle: 1.0
+          cart_position: 1.0
+      local_potential_weights:
+        L_e: 0.7
+        L_edot: 0.3
+      local_progress:
+        enabled: false
+        weight:
+          pendulum_angle: 1.0
+          cart_position: 1.0
+        positive_only: true
+        condition_mode: global_progress_positive                      # always | global_progress_positive | all_local_progress_positive | global_and_all_local_positive
+        clip_enabled: true
+        clip_max: 0.02
+      local_debt:
+        enabled: true
+        persistence: 0.6
+        penalty_weight:
+          pendulum_angle: 0.1
+          cart_position: 0.1
+        clip_enabled: true
+        clip_max: 1.0
     # --- Extra Rewards ---
     extra_rewards:
       enabled: false

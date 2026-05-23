@@ -117,7 +117,12 @@ class SimulationManager:
         self.prev_dynamic_system_state_dict = self.dynamic_system_base.get_dynamic_system_state('raw')
         self.prev_dynamic_system_state_norm_dict = self.dynamic_system_base.get_dynamic_system_state('normalized')
         current_gains_for_agent = self._get_gains_for_agent()
-        self.prev_agent_state = self.agent_base.build_agent_state(self.prev_dynamic_system_state_dict, current_gains_for_agent)
+        reward_state_for_agent = self.reward_calculator.get_agent_state_records()
+        self.prev_agent_state = self.agent_base.build_agent_state(
+            self.prev_dynamic_system_state_dict,
+            current_gains_for_agent,
+            reward_state_for_agent
+        )
         
         # 4. Construir prev_actions_dict inicial (todas las acciones en "mantener" = 1)
         self.prev_actions_dict = self._build_initial_actions_dict()
@@ -179,7 +184,12 @@ class SimulationManager:
             self.prev_dynamic_system_state_dict = self.dynamic_system_base.get_dynamic_system_state('raw')
             self.prev_dynamic_system_state_norm_dict = self.dynamic_system_base.get_dynamic_system_state('normalized')
             current_gains_for_agent = self._get_gains_for_agent()
-            self.prev_agent_state = self.agent_base.build_agent_state(self.prev_dynamic_system_state_dict, current_gains_for_agent)
+            reward_state_for_agent = self.reward_calculator.get_agent_state_records()
+            self.prev_agent_state = self.agent_base.build_agent_state(
+                self.prev_dynamic_system_state_dict,
+                current_gains_for_agent,
+                reward_state_for_agent
+            )
             self.prev_actions_dict = actions_dict
         
         # 7. Si terminó por tiempo, asignar razón
@@ -271,7 +281,12 @@ class SimulationManager:
         # 5. Ejecutar aprendizaje del agente
         current_gains_for_agent = self._get_gains_for_agent()
         current_dynamic_state_raw = self.dynamic_system_base.get_dynamic_system_state('raw')
-        next_agent_state = self.agent_base.build_agent_state(current_dynamic_state_raw, current_gains_for_agent)
+        reward_state_for_agent = self.reward_calculator.get_agent_state_records()
+        next_agent_state = self.agent_base.build_agent_state(
+            current_dynamic_state_raw,
+            current_gains_for_agent,
+            reward_state_for_agent
+        )
         
         # Distinction: Time limit truncation vs true boundary termination
         terminated_boundary = terminated and self.termination_reason != "time_limit"

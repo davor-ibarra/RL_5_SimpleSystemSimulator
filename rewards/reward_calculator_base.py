@@ -396,6 +396,17 @@ class RewardCalculatorBase:
         records.update(self._last_reward_composition_record)
         
         return records
+
+    def get_agent_state_records(self):
+        """
+        Expone variables internas de reward aptas para el estado del agente.
+        """
+        records = {}
+
+        if self.coordination_reward_handler and hasattr(self.coordination_reward_handler, 'get_state_record'):
+            records.update(self.coordination_reward_handler.get_state_record())
+
+        return records
     
     def get_episode_summary_rewards(self):
         """

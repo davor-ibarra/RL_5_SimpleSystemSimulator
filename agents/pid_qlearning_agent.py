@@ -203,7 +203,7 @@ class PIDQLearningAgent:
         if self.learning_rate_decay_enabled:
             self.learning_rate = max(self.learning_rate_min, self.learning_rate * self.learning_rate_decay_factor)
     
-    def build_agent_state(self, dynamic_state_dict, controller_gains_dict):
+    def build_agent_state(self, dynamic_state_dict, controller_gains_dict, extra_state_dict=None):
         """
         Construye el estado del agente.
         El estado se basa en las ganancias de los controladores + variables adicionales.
@@ -217,6 +217,8 @@ class PIDQLearningAgent:
         """
         agent_state = dict(controller_gains_dict)
         agent_state.update(dynamic_state_dict)
+        if extra_state_dict:
+            agent_state.update(extra_state_dict)
         return agent_state
     
     def select_action(self, agent_state):
