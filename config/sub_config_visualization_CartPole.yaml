@@ -119,8 +119,8 @@ plots:
       ylabel_fontsize: 12
       xmin: null
       xmax: null
-      ymin: -50
-      ymax: 0
+      ymin: null
+      ymax: null
       tick_fontsize: 10
       xtick_rotation: 30
       num_xticks: null

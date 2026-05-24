@@ -39,7 +39,7 @@ class ExtraRewardsHandler:
             config (dict): Configuración de extra_rewards
         """
         self.config = config
-        self.normalized_reward_mode = config.get('normalized_reward_mode', False)
+        self.normalized_reward_mode = config['normalized_reward_mode']
         
         # Extraer configuraciones de cada approach
         self.penalty_config = config['penalty_approach']
@@ -237,6 +237,7 @@ class ExtraRewardsHandler:
         flat.update(normalization_flat)
 
         total_extra = 0.0
+        composition_score_total = 0.0
         for var in var_objs:
             flat[f'extra_raw_total_{var}'] = var_totals[var]
             if self.normalized_reward_mode:
@@ -244,8 +245,14 @@ class ExtraRewardsHandler:
             else:
                 flat[f'extra_total_{var}'] = var_totals[var]
             total_extra += flat[f'extra_total_{var}']
+            composition_score_total += flat[f'extra_composition_score_01_{var}']
         if self.normalized_reward_mode and var_objs:
             total_extra /= len(var_objs)
+        flat['extra_composition_score_01'] = (
+            composition_score_total / len(var_objs)
+            if var_objs else 0.5
+        )
+        flat['extra_composition_cost_01'] = 1.0 - flat['extra_composition_score_01']
         
         self.last_extra_reward_params_record = flat
         return total_extra, flat
@@ -507,6 +514,7 @@ class ExtraRewardsHandler:
 
             normalized_total = positive_reward_01 - penalty_cost_01
             normalized_totals[var] = normalized_total
+            composition_score_01 = self._signed_unit_to_score(normalized_total)
 
             flat[f'extra_penalty_bound_{var}'] = penalty_bound
             flat[f'extra_bonus_bound_{var}'] = bonus_bound
@@ -516,8 +524,14 @@ class ExtraRewardsHandler:
             flat[f'extra_incentive_total_01_{var}'] = incentive_reward_01
             flat[f'extra_positive_total_01_{var}'] = positive_reward_01
             flat[f'extra_total_01_{var}'] = normalized_total
+            flat[f'extra_composition_score_01_{var}'] = composition_score_01
+            flat[f'extra_composition_cost_01_{var}'] = 1.0 - composition_score_01
 
         return normalized_totals, flat
+
+    def _signed_unit_to_score(self, value):
+        signed_value = min(1.0, max(-1.0, value))
+        return 0.5 * (signed_value + 1.0)
 
     def _resolve_incentive_bucket(self, reward_mode, cfg):
         """

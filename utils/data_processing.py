@@ -103,6 +103,17 @@ def calculate_episode_summary(episode_data, config_data_summary=None):
             else:
                  summary[col] = values
 
+    # 2.1. Columnas dinamicas de reward por controlador.
+    # Preserva controladores adicionales aunque no esten listados explicitamente.
+    for key, values in data_sources.items():
+        if not key.startswith('total_reward_controller_') or key in summary:
+            continue
+        if isinstance(values, list):
+            if values:
+                summary[key] = values[-1]
+        else:
+            summary[key] = values
+
     # 3. Calcular estadísticas (data_stats)
     for key in stats_cols:
         if key in data_sources:
@@ -110,6 +121,10 @@ def calculate_episode_summary(episode_data, config_data_summary=None):
             # Solo calcular si es lista de números y no está vacía
             if isinstance(values, list) and values and isinstance(values[0], (int, float)):
                 stats = compute_statistics(values)
+                for stat_name, stat_val in stats.items():
+                     summary[f'{key}_{stat_name}'] = stat_val
+            elif isinstance(values, (int, float, np.number)) and not isinstance(values, bool):
+                stats = compute_statistics([values])
                 for stat_name, stat_val in stats.items():
                      summary[f'{key}_{stat_name}'] = stat_val
 

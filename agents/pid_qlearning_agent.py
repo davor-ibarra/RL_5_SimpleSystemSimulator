@@ -88,6 +88,7 @@ class PIDQLearningAgent:
         # Por agente habilitado
         self.agent_names = []
         self.agent_state_vars = {}
+        self.required_state_vars = []
         self.agent_q_shapes = {}
         
         # Primera pasada: construir diccionarios de todas las variables
@@ -122,10 +123,18 @@ class PIDQLearningAgent:
             # Variables de estado: primero la ganancia propia, luego state_vars
             state_vars = [agent_name]
             for sv in var_cfg['state_vars']:
-                if sv in self.var_to_idx and sv != agent_name:
+                if sv not in self.var_to_idx:
+                    raise ValueError(
+                        f"State variable '{sv}' declared for agent '{agent_name}' "
+                        "must have a discretization entry in agent_config.agents"
+                    )
+                if sv != agent_name:
                     state_vars.append(sv)
             
             self.agent_state_vars[agent_name] = state_vars
+            for state_var in state_vars:
+                if state_var not in self.required_state_vars:
+                    self.required_state_vars.append(state_var)
             
             # Shape de Q-table: (bins_var1, bins_var2, ..., num_actions)
             shape = tuple([self.var_bins[sv] for sv in state_vars]) + (self.num_actions,)
@@ -203,8 +212,11 @@ class PIDQLearningAgent:
         if self.learning_rate_decay_enabled:
             self.learning_rate = max(self.learning_rate_min, self.learning_rate * self.learning_rate_decay_factor)
     
-    def build_agent_state(self, dynamic_state_dict, controller_gains_dict, extra_state_dict=None):
+    def build_agent_state(self, agent_context):
         """
+        Recibe un contexto plano y selecciona solo las variables declaradas
+        en agent_state_vars. Los nombres faltantes fallan por acceso directo.
+
         Construye el estado del agente.
         El estado se basa en las ganancias de los controladores + variables adicionales.
         
@@ -215,11 +227,10 @@ class PIDQLearningAgent:
         Returns:
             dict: Estado del agente con todas las variables necesarias
         """
-        agent_state = dict(controller_gains_dict)
-        agent_state.update(dynamic_state_dict)
-        if extra_state_dict:
-            agent_state.update(extra_state_dict)
-        return agent_state
+        return {
+            var_name: agent_context[var_name]
+            for var_name in self.required_state_vars
+        }
     
     def select_action(self, agent_state):
         """
@@ -381,6 +392,7 @@ class PIDQLearningAgent:
             'q_tables': q_tables_matrix,
             'visit_counts': visit_counts_matrix,
             'agent_state_vars': self.agent_state_vars,
+            'required_state_vars': self.required_state_vars,
             'var_mins': self.var_mins,
             'var_steps': self.var_steps,
             'action_space': self.action_space,

@@ -54,7 +54,7 @@ class MetricProcessing:
         # Extraer config de global_vars (puede no existir)
         metric_processing_config = self.config_main['reward_base']['reward_calculation']['metric_processing']
         norm_params = metric_processing_config['normalization']['params']
-        self.global_vars_config = norm_params['global_vars'] if 'global_vars' in norm_params else {}
+        self.global_vars_config = norm_params['global_vars']
         
         # ---------------------------------------------------------
         # Pre-compilar trabajos estáticos para evitar chequeos continuos
@@ -115,11 +115,11 @@ class MetricProcessing:
         
         for var_obj in self.var_obj_to_controller:
             jobs[var_obj] = []
-            var_norm = norm_params.get(var_obj, {})
+            var_norm = norm_params[var_obj]
             
             for f_key, sig_prefix in signal_base_map.items():
                 sig_key = f'{sig_prefix}_{var_obj}'
-                cfg = var_norm.get(f_key, {'method': 'mean_squared', 'range': [-1.0, 1.0]})
+                cfg = var_norm[f_key]
                 
                 method = cfg['method']
                 v_range = cfg['range']
@@ -238,14 +238,18 @@ class MetricProcessing:
         jobs = self.feature_jobs.get(var_obj, [])
         
         for (f_key, sig_key, dest_agg, dest_norm, method, v_range) in jobs:
-            values = columnar_data.get(sig_key, [])
+            values = columnar_data[sig_key]
             
             if not values:
-                aggregated = 0.0
+                raise ValueError(f"No finite values available for metric signal {sig_key}")
             else:
                 aggregated = self._aggregate_with_method(values, method)
                 
             features[dest_agg] = aggregated
+            if f_key == 'u':
+                features[f'u_eff_{var_obj}_{method}'] = aggregated
+            elif f_key == 'delta_u':
+                features[f'delta_u_eff_{var_obj}_{method}'] = aggregated
             
             if normalization_enabled:
                 features[dest_norm] = self._normalize_value(aggregated, v_range, output_limits, method)
@@ -263,10 +267,10 @@ class MetricProcessing:
         output_limits = self.normalization_config['output_limits']
         
         for (sig_key, dest_agg, dest_norm, method, v_range) in self.global_jobs:
-            values = columnar_data.get(sig_key, [])
+            values = columnar_data[sig_key]
             
             if not values:
-                continue
+                raise ValueError(f"No finite values available for global metric signal {sig_key}")
                 
             aggregated = self._aggregate_with_method(values, method)
             global_metrics[dest_agg] = aggregated
@@ -351,8 +355,7 @@ class MetricProcessing:
         elif method == 'keep_last':
             return float(arr[-1])
         else:
-            # Default: mean_squared
-            return float(np.mean(arr ** 2))
+            raise ValueError(f"Unsupported metric aggregation method: {method}")
     
     def _normalize_value(self, value, value_range, output_limits, method):
         """
@@ -369,6 +372,8 @@ class MetricProcessing:
         """
         range_min, range_max = value_range
         out_min, out_max = output_limits
+        if range_max == range_min:
+            raise ValueError(f"Invalid normalization range with equal limits: {value_range}")
         
         # Calcular span según el método
         if method == 'mean_squared':
@@ -386,7 +391,7 @@ class MetricProcessing:
             range_span = 1.0
         else:
             # Para mean, accum, keep_last: rango lineal
-            range_span = range_max - range_min if range_max != range_min else 1.0
+            range_span = range_max - range_min
             # Ajustar value a rango [0, span]
             value = abs(value - range_min)
         

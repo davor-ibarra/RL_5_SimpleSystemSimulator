@@ -125,6 +125,10 @@ agent_base:
       cart_position: {enabled_agent: false, min: 0.0, max: 2.0, bins: 2, state_vars: []}
       coordination_debt_pendulum_angle: {enabled_agent: false, min: 0.0, max: 1.0, bins: 3, state_vars: []}
       coordination_debt_cart_position: {enabled_agent: false, min: 0.0, max: 1.0, bins: 3, state_vars: []}
+      local_baseline_B_pendulum_angle: {enabled_agent: false, min: 0.0, max: 1.0, bins: 3, state_vars: []}
+      local_baseline_B_cart_position: {enabled_agent: false, min: 0.0, max: 1.0, bins: 3, state_vars: []}
+      local_previous_cost_J_pendulum_angle: {enabled_agent: false, min: 0.0, max: 1.0, bins: 3, state_vars: []}
+      local_previous_cost_J_cart_position: {enabled_agent: false, min: 0.0, max: 1.0, bins: 3, state_vars: []}
 # --- Reward Configuration ---
 reward_base:
   # --- 0. Reward Base Configuration ---
@@ -136,10 +140,12 @@ reward_base:
     reward_approach: controller_reward                # unique_for_all_reward | controller_reward | individual_reward (**ojo que no esta normalizando)
     reward_composition:
       enabled: true
+      normalized_composition_mode: true
       strict_weight_sum: true
       block_weights:
-        principal_reward: 0.7
-        coordination_reward: 0.3
+        principal_reward: 0.65
+        coordination_reward: 0.35
+        local_reward_extension: 0.0
         extra_rewards: 0.0
     # Credit Assignment
     individual_reward_params:
@@ -159,21 +165,21 @@ reward_base:
     metric_processing:
       normalization:
         enabled: true
-        output_limits: [0.0, 1.0]     # [-1.0, 1.0] | [0.0, 1.0]
+        output_limits: [0.0, 1.0]     # [0.0, 1.0]    |    [-1.0, 1.0]  *ojo que esta opción esta quebrada por el abs() en "LagrangeRewardCalculator"
         params:  # abs | accum | mean | mean_squared | rms // proportion | trend | change_and_osci | keep_last
           pendulum_angle:
             e: {method: rms, range: [-0.35, 0.35]}         # Error en espacio normalizado [-1, 1]
             edot: {method: rms, range: [-1.2, 1.2]}    # Derivada error normalizado (conservador)
             I: {method: rms, range: [-2.0, 2.0]}         # Integral error normalizado (acumulación)
             u: {method: rms, range: [-1.0, 1.0]}         # Acción de control [-1, 1]
-            #delta_u: {method: mean_squared, range: [-0.1, 0.1]}   # Variación acción [-2, 2] máximo
+            delta_u: {method: rms, range: [-2.0, 2.0]}   # Variacion maxima analitica entre pasos con actuador saturado [-1, 1]
           cart_position:
-            e: {method: rms, range: [-0.3, 0.3]}         # Error en espacio normalizado [-1, 1]
-            edot: {method: rms, range: [-0.25, 0.25]}    # Derivada error normalizado (conservador)
+            e: {method: rms, range: [-0.6, 0.6]}         # Error en espacio normalizado [-1, 1]
+            edot: {method: rms, range: [-0.5, 0.5]}    # Derivada error normalizado (conservador)
             I: {method: rms, range: [-0.7, 0.7]}         # Integral error normalizado (acumulación)
             u: {method: rms, range: [-1.0, 1.0]}         # Acción de control [-1, 1]
-            #delta_u: {method: mean_squared, range: [-0.1, 0.1]}   # Variación acción [-2, 2] máximo
-          global_vars:
+            delta_u: {method: rms, range: [-2.0, 2.0]}   # Variacion maxima analitica entre pasos con actuador saturado [-1, 1]
+          global_vars:        # *ojo que global_vars no está completamente integrado con la recompensa principal, LagrangeRewardCalculator compila todos los features como si fueran per-variable
             u_total:       {method: mean_squared ,range: [-1, 1]}
             delta_u_total: {method: mean_squared, range: [-0.05, 0.05]}
     # --- Principal Reward Components ---
@@ -183,8 +189,8 @@ reward_base:
       reward_principal_name: lagrange_reward
       module_path: rewards.lagrange_reward_calculator
       class_name: LagrangeRewardCalculator
-      method: weighted_exponential            # lineal_combination | weighted_exponential
-      lineal_combination_params:
+      method: nonlinear_local_cost            # lineal_combination | weighted_exponential | nonlinear_local_cost
+      lineal_combination_params:              # ojo global reward duplicado en combinación lineal no normalizada
         features:
           L_e:       {weight: 0.35}           # Peso del error
           L_edot:    {weight: 0.5}           # Peso de la derivada del error
@@ -214,7 +220,7 @@ reward_base:
             setpoint: 0.0
             per_var:
               pendulum_angle: {scaled: 0.5, min_factor: 0.4, max_factor: 1.0}
-              cart_position:  {scaled: 0.5, min_factor: 0.0, max_factor: 1.0, invert: false}
+              cart_position:  {scaled: 0.5, min_factor: 0.25, max_factor: 1.0, invert: false}
           L_u:
             enabled: false
             type: exp
@@ -224,6 +230,25 @@ reward_base:
             per_var:
               pendulum_angle: {scaled: 0.25, min_factor: 0.2, max_factor: 1.0}
               cart_position:  {scaled: 0.25, min_factor: 0.2, max_factor: 1.0}
+      nonlinear_local_cost_params:
+        mode: nonlinear_cost_with_progress             # nonlinear_cost_only | nonlinear_cost_with_progress
+        reward_form: cost                             # score: 1-J | cost: -J
+        component_weights:
+          base:
+            pendulum_angle: 0.7
+            cart_position: 0.7
+          progress:
+            pendulum_angle: 0.3
+            cart_position: 0.3
+        alpha_e:
+          pendulum_angle: 0.65
+          cart_position: 0.65
+        effort_weight:
+          pendulum_angle: 0.2
+          cart_position: 0.2
+        effort_gate_kappa:
+          pendulum_angle: 8.0
+          cart_position: 8.0
       feature_budget_conservation:
         enabled: false
         strict_weight_sum: false
@@ -240,19 +265,20 @@ reward_base:
       reward_name: coordination_global_progress
       module_path: rewards.coordination_reward_handler
       class_name: CoordinationRewardHandler
-      reward_mode: task_progress_credit_assignment                    #(decorativo) se podría escalar a otras configuraciones
-      assign_mode: per_var                                            #(decorativo) se podría escalar a otras configuraciones
       global_weight: 12                                                  # Escala legacy si normalized_reward_mode=false
       potential_features: [L_e, L_edot]
       potential_weights:
         L_e:
-          pendulum_angle: 0.6
-          cart_position: 0.6
+          pendulum_angle: 0.45
+          cart_position: 0.2
         L_edot:
-          pendulum_angle: 0.4
-          cart_position: 0.4
+          pendulum_angle: 0.25
+          cart_position: 0.1
+      potential_transform:
+        value_power: 1.0                                      # 1.0 lineal | 2.0 cuadratico tipo Lyapunov
+        square_terms: false
       progress_positive_only: true                                    #*Si llegara a ser False requiere de implementar un "progress_clip_min"
-      progress_clip_max: 0.01
+      progress_clip_max: 0.05
       contribution_error_signal: error_{var_obj}
       contribution_effort_signal: u_alloc_{var_obj}
       correction_signs:
@@ -260,6 +286,10 @@ reward_base:
         cart_position: 1.0
       epsilon_credit: 1.0e-6
       credit_reduction_mode: average
+      component_weights:
+        global_progress: 1.0
+        local_progress: 0.0
+        local_debt: 0.0
       potential_weight_normalization:
         enabled: false
         strict_weight_sum: false
@@ -280,8 +310,8 @@ reward_base:
           pendulum_angle: 1.0
           cart_position: 1.0
       local_potential_weights:
-        L_e: 0.7
-        L_edot: 0.3
+        L_e: 0.6
+        L_edot: 0.4
       local_progress:
         enabled: false
         weight:
@@ -292,13 +322,84 @@ reward_base:
         clip_enabled: true
         clip_max: 0.02
       local_debt:
-        enabled: true
-        persistence: 0.6
+        enabled: false
+        persistence: 0.95
         penalty_weight:
-          pendulum_angle: 0.1
-          cart_position: 0.1
+          pendulum_angle: 0.25
+          cart_position: 0.25
         clip_enabled: true
         clip_max: 1.0
+    # --- Local Reward Extension ---
+    local_reward_extension:
+      enabled: false
+      normalized_reward_mode: true
+      reward_name: local_reward_extension
+      module_path: rewards.local_reward_extension_handler
+      class_name: LocalRewardExtensionHandler
+      component_weights:
+        marginal_baseline:
+          pendulum_angle: 0.5
+          cart_position: 0.5
+        movement_penalty:
+          pendulum_angle: 0.25
+          cart_position: 0.25
+        synergy:
+          pendulum_angle: 0.25
+          cart_position: 0.25
+      cost:
+        enabled: false
+        alpha_e:
+          pendulum_angle: 0.65
+          cart_position: 0.65
+        effort_weight:
+          pendulum_angle: 0.25
+          cart_position: 0.25
+        effort_gate_kappa:
+          pendulum_angle: 4.0
+          cart_position: 4.0
+      marginal_baseline:
+        enabled: false
+        mode: immediate_delta                              # immediate_delta | smoothed_baseline
+        beta_immediate:
+          pendulum_angle: 0.05
+          cart_position: 0.05
+        deterioration_weight_immediate:
+          pendulum_angle: 0.05
+          cart_position: 0.05
+        beta_smooth:
+          pendulum_angle: 0.05
+          cart_position: 0.05
+        deterioration_weight_smooth:
+          pendulum_angle: 0.05
+          cart_position: 0.05
+        baseline_tau:
+          pendulum_angle: 0.1
+          cart_position: 0.1
+      movement_penalty:
+        enabled: false
+        penalty_weight:
+          pendulum_angle: 0.01
+          cart_position: 0.01
+      synergy:
+        enabled: false
+        weight:
+          pendulum_angle: 0.05
+          cart_position: 0.05
+        error_signal: error_{var_obj}
+        derivative_error_signal: derivative_error_{var_obj}
+        effort_signal: u_alloc_{var_obj}
+        correction_signs:
+          pendulum_angle: 1.0
+          cart_position: 1.0
+        gamma_e:
+          pendulum_angle: 1.0
+          cart_position: 1.0
+        gamma_edot:
+          pendulum_angle: 1.0
+          cart_position: 1.0
+        gamma_u:
+          pendulum_angle: 1.0
+          cart_position: 1.0
     # --- Extra Rewards ---
     extra_rewards:
       enabled: false
@@ -323,7 +424,7 @@ reward_base:
             delta_control_action_pendulum_angle: {weight: 0.1}
       # Bonus Approach
       bonus_approach:
-        goal_bonus_reward:
+        goal_bonus_reward:                            # ojo goal_bonus se duplica en modo no normalizado, _evaluate_bonuses() asigna el bonus completo a cada var_obj
           enabled: false
           success_flags: ['stabilization_success']
           method: decay                                    # static | decay

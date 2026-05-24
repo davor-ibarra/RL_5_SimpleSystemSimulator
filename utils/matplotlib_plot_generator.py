@@ -517,13 +517,77 @@ class MatplotlibPlotGenerator:
         x_var = plot_config_data.get('x_variable')
         y_var = plot_config_data.get('y_variable')
         if not x_var or not y_var: raise ValueError(f"Line plot '{plot_name}': Faltan 'x_variable' o 'y_variable'.")
-        if x_var not in data.columns or y_var not in data.columns: raise ValueError(f"Line plot '{plot_name}': Columnas '{x_var}' o '{y_var}' no encontradas.")
+        controller_reward_cols = []
+        if y_var == 'total_reward':
+            controller_reward_cols = sorted([
+                col for col in data.columns
+                if col.startswith('total_reward_controller_')
+            ])
+        controller_performance_cols = []
+        if y_var == 'performance':
+            data = self._derive_controller_performance(data)
+            controller_performance_cols = sorted([
+                col for col in data.columns
+                if col.startswith('performance_controller_')
+            ])
+
+        controller_metric_cols = controller_reward_cols or controller_performance_cols
+        if x_var not in data.columns:
+            raise ValueError(f"Line plot '{plot_name}': Columnas '{x_var}' o '{y_var}' no encontradas.")
+        if y_var in ('total_reward', 'performance') and not controller_metric_cols:
+            raise ValueError(
+                f"Line plot '{plot_name}': No se encontraron columnas 'total_reward_controller_*'."
+            )
+        if y_var not in data.columns and not controller_metric_cols:
+            raise ValueError(f"Line plot '{plot_name}': Columnas '{x_var}' o '{y_var}' no encontradas.")
 
         df_filtered = data.copy()
         filter_reason = style_config.get('filter_termination_reason')
         if filter_reason and isinstance(filter_reason, list) and 'termination_reason' in df_filtered.columns:
             df_filtered = df_filtered[df_filtered['termination_reason'].isin(filter_reason)]
             if df_filtered.empty: logger.warning(f"Line plot '{plot_name}': No quedan datos después de filtrar por {filter_reason}. Plot vacío.")
+
+        if controller_metric_cols:
+            if controller_reward_cols:
+                style_config['title'] = 'Controller Total Reward per Episode'
+                style_config['ylabel'] = 'Episode Total Reward [-]'
+                label_prefix = 'total_reward_'
+            else:
+                style_config['title'] = 'Controller Performance per Episode'
+                style_config['ylabel'] = 'Controller Performance [-/s]'
+                label_prefix = 'performance_'
+            style_config['show_legend'] = True
+
+            line_colors = style_config.get('line_colors')
+            plotted_any = False
+            for idx, metric_col in enumerate(controller_metric_cols):
+                if metric_col not in df_filtered.columns:
+                    continue
+
+                x_data = pd.to_numeric(df_filtered[x_var], errors='coerce')
+                y_data = pd.to_numeric(df_filtered[metric_col], errors='coerce')
+                valid_idx = x_data.notna() & y_data.notna()
+                if not valid_idx.any():
+                    continue
+
+                x_plot, y_plot = x_data[valid_idx], y_data[valid_idx]
+                sort_order = x_plot.argsort()
+                label = metric_col.replace(label_prefix, '')
+                plot_kwargs = {
+                    'linewidth': style_config.get('line_width', 1.0),
+                    'marker': style_config.get('marker_style', ''),
+                    'markersize': style_config.get('marker_size', 3),
+                    'label': label
+                }
+                if isinstance(line_colors, list) and line_colors:
+                    plot_kwargs['color'] = line_colors[idx % len(line_colors)]
+
+                ax.plot(x_plot.iloc[sort_order], y_plot.iloc[sort_order], **plot_kwargs)
+                plotted_any = True
+
+            if not plotted_any:
+                logger.warning(f"Line plot '{plot_name}': No quedan datos numericos validos para metricas por controlador.")
+            return
 
         if not df_filtered.empty:
             x_data = pd.to_numeric(df_filtered[x_var], errors='coerce')
@@ -542,6 +606,31 @@ class MatplotlibPlotGenerator:
                         markeredgecolor=style_config.get('marker_color', '#ff7f0e'),
                         label=y_var) # Añadir label para leyenda automática
             else: logger.warning(f"Line plot '{plot_name}': No quedan datos numéricos válidos después de coerción/filtrado.")
+
+    def _derive_controller_performance(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Deriva performance por controlador solo para graficar.
+        No persiste columnas nuevas en summary.
+        """
+        if 'final_t_sec' not in data.columns:
+            return data
+
+        reward_cols = sorted([
+            col for col in data.columns
+            if col.startswith('total_reward_controller_')
+        ])
+        if not reward_cols:
+            return data
+
+        derived = data.copy()
+        duration = pd.to_numeric(derived['final_t_sec'], errors='coerce')
+        valid_duration = duration.where(duration > 0.0)
+        for reward_col in reward_cols:
+            controller_suffix = reward_col.replace('total_reward_controller_', '')
+            reward_total = pd.to_numeric(derived[reward_col], errors='coerce')
+            derived[f'performance_controller_{controller_suffix}'] = reward_total / valid_duration
+
+        return derived
 
     def _generate_scatter_plot(self, ax, plot_config_data: Dict, data: Optional[pd.DataFrame]):
         """Genera un gráfico de dispersión."""

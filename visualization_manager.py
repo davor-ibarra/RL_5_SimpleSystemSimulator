@@ -79,6 +79,9 @@ class VisualizationManager:
             plot_type = plot_cfg.get("type")
             plot_style_cfg = plot_cfg.get("config", {})
 
+            if plot_type == "line" and plot_cfg.get("y_variable") in ("total_reward", "performance"):
+                return None
+
             if plot_type in ("line", "scatter"):
                 add_column(plot_cfg.get("x_variable"))
                 add_column(plot_cfg.get("y_variable"))

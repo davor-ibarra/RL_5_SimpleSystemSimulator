@@ -69,6 +69,7 @@ class SimulationManager:
         self.current_time_sec = 0.0
         self.termination_reason = ""
         self.total_reward = 0.0
+        self.total_controller_rewards = {}
         
         # Obtener nombres desde componentes instanciados
         self.controller_names = list(self.controllers.keys())
@@ -91,7 +92,8 @@ class SimulationManager:
         for episode_id in range(self.n_episodes):
             print(f"\n[SIMULATION_MANAGER] === Episodio {episode_id + 1}/{self.n_episodes} ===")
             self._run_episode(episode_id)
-            print(f"\n[SIMULATION_MANAGER] --- T_max = {self.current_time_sec}  |  Total Reward = {self.total_reward}  |  Termination Reason = {self.termination_reason} ---")
+            formatted_controller_rewards = self._format_controller_rewards()
+            print(f"\n[SIMULATION_MANAGER] --- T_max = {self.current_time_sec}  |  Rewards = {formatted_controller_rewards}  |  Termination Reason = {self.termination_reason} ---")
             current_gains = self._get_gains_for_agent()
             formatted_gains = "  |  ".join([f"{k} = {round(v, 2)}" for k, v in current_gains.items()])
             print(f"\n[SIMULATION_MANAGER] --- {formatted_gains} ---")
@@ -116,13 +118,7 @@ class SimulationManager:
         # 3. Inicializar estado previo necesario para decisiones
         self.prev_dynamic_system_state_dict = self.dynamic_system_base.get_dynamic_system_state('raw')
         self.prev_dynamic_system_state_norm_dict = self.dynamic_system_base.get_dynamic_system_state('normalized')
-        current_gains_for_agent = self._get_gains_for_agent()
-        reward_state_for_agent = self.reward_calculator.get_agent_state_records()
-        self.prev_agent_state = self.agent_base.build_agent_state(
-            self.prev_dynamic_system_state_dict,
-            current_gains_for_agent,
-            reward_state_for_agent
-        )
+        self.prev_agent_state = self.agent_base.build_agent_state(self._collect_agent_context())
         
         # 4. Construir prev_actions_dict inicial (todas las acciones en "mantener" = 1)
         self.prev_actions_dict = self._build_initial_actions_dict()
@@ -142,6 +138,7 @@ class SimulationManager:
         terminated = False
         self.termination_reason = ""
         self.total_reward = 0.0
+        self.total_controller_rewards = self._build_zero_controller_rewards()
         total_agent_decisions = 0
         max_episode_steps = int(round(self.episode_duration_sec / self.dt_sec))
         executed_episode_steps = 0
@@ -174,6 +171,11 @@ class SimulationManager:
             terminated = interval_result['interval_level_data']['simulation_state_dict']['terminated']
             self.termination_reason = interval_result['interval_level_data']['simulation_state_dict']['termination_reason']
             self.total_reward += interval_result['interval_level_data']['global_interval_reward']
+            interval_controller_rewards = self._aggregate_interval_controller_rewards(
+                interval_result['interval_level_data']['all_interval_reward']
+            )
+            for controller_name, reward_value in interval_controller_rewards.items():
+                self.total_controller_rewards[controller_name] += reward_value
 
             executed_episode_steps += n_steps_executed
             self.current_time_sec += n_steps_executed * self.dt_sec
@@ -183,13 +185,7 @@ class SimulationManager:
             total_agent_decisions += 1
             self.prev_dynamic_system_state_dict = self.dynamic_system_base.get_dynamic_system_state('raw')
             self.prev_dynamic_system_state_norm_dict = self.dynamic_system_base.get_dynamic_system_state('normalized')
-            current_gains_for_agent = self._get_gains_for_agent()
-            reward_state_for_agent = self.reward_calculator.get_agent_state_records()
-            self.prev_agent_state = self.agent_base.build_agent_state(
-                self.prev_dynamic_system_state_dict,
-                current_gains_for_agent,
-                reward_state_for_agent
-            )
+            self.prev_agent_state = self.agent_base.build_agent_state(self._collect_agent_context())
             self.prev_actions_dict = actions_dict
         
         # 7. Si terminó por tiempo, asignar razón
@@ -213,6 +209,7 @@ class SimulationManager:
             'total_reward': self.total_reward,
             'total_agent_decisions': total_agent_decisions
         }
+        end_episode_data.update(self._build_controller_reward_summary())
         end_episode_data.update(episode_reward_summary)
         end_episode_data.update(self.agent_base.get_agent_params_records())
         self.metric_collector.on_episode_end(episode_id, end_episode_data)
@@ -276,17 +273,15 @@ class SimulationManager:
         # 4. Calcular recompensa del intervalo (interval-level)
         # Tiempo al final del intervalo para cálculo de decay en goal_bonus
         end_time_sec = current_time_sec + n_steps_executed * self.dt_sec
-        reward_for_learning = self.reward_calculator.calculate(processed_metrics_dict, self.termination_reason, end_time_sec)
+        reward_for_learning = self.reward_calculator.calculate(
+            processed_metrics_dict,
+            self.termination_reason,
+            end_time_sec,
+            actions_dict
+        )
         
         # 5. Ejecutar aprendizaje del agente
-        current_gains_for_agent = self._get_gains_for_agent()
-        current_dynamic_state_raw = self.dynamic_system_base.get_dynamic_system_state('raw')
-        reward_state_for_agent = self.reward_calculator.get_agent_state_records()
-        next_agent_state = self.agent_base.build_agent_state(
-            current_dynamic_state_raw,
-            current_gains_for_agent,
-            reward_state_for_agent
-        )
+        next_agent_state = self.agent_base.build_agent_state(self._collect_agent_context())
         
         # Distinction: Time limit truncation vs true boundary termination
         terminated_boundary = terminated and self.termination_reason != "time_limit"
@@ -304,6 +299,7 @@ class SimulationManager:
             },
             'interval_level_data': {
                 'global_interval_reward': self.reward_calculator._last_global_interval_reward,
+                'all_interval_reward': reward_for_learning,
                 'learn_info': learn_info,
                 'simulation_state_dict': {'terminated': terminated, 'termination_reason': self.termination_reason}
             }
@@ -457,6 +453,83 @@ class SimulationManager:
             gains_dict[agent_name] = gains[gain_type]
         
         return gains_dict
+
+    def _build_zero_controller_rewards(self):
+        """
+        Inicializa el acumulador de reward por controlador.
+
+        Returns:
+            dict: {controller_name -> reward_total_episode}
+        """
+        return {controller_name: 0.0 for controller_name in self.controller_names}
+
+    def _aggregate_interval_controller_rewards(self, assigned_rewards):
+        """
+        Agrega rewards asignados a agentes hacia rewards por controlador.
+        Para controller_reward, los agentes del mismo controlador reciben el
+        mismo valor; el promedio evita contar tres veces el mismo lazo.
+
+        Args:
+            assigned_rewards (dict): {agent_name -> reward_interval}
+
+        Returns:
+            dict: {controller_name -> reward_interval}
+        """
+        grouped_rewards = {
+            controller_name: []
+            for controller_name in self.controller_names
+        }
+
+        for agent_name, reward_value in assigned_rewards.items():
+            if agent_name not in self.agent_to_controller_map:
+                continue
+            controller_name, _ = self.agent_to_controller_map[agent_name]
+            grouped_rewards[controller_name].append(float(reward_value))
+
+        controller_rewards = {}
+        for controller_name, values in grouped_rewards.items():
+            if values:
+                controller_rewards[controller_name] = sum(values) / len(values)
+            else:
+                controller_rewards[controller_name] = 0.0
+
+        return controller_rewards
+
+    def _build_controller_reward_summary(self):
+        """
+        Construye columnas de summary para el reward total del episodio por controlador.
+        """
+        return {
+            f'total_reward_{controller_name}': reward_value
+            for controller_name, reward_value in self.total_controller_rewards.items()
+        }
+
+    def _format_controller_rewards(self):
+        """
+        Formatea rewards acumulados por controlador para salida de terminal.
+        """
+        if not self.total_controller_rewards:
+            return "N/A"
+
+        return "  |  ".join([
+            f"{controller_name} = {round(reward_value, 4)}"
+            for controller_name, reward_value in self.total_controller_rewards.items()
+        ])
+
+    def _collect_agent_context(self):
+        """
+        Reune snapshots planos disponibles y los entrega al agente sin interpretar
+        su espacio de estados.
+        """
+        context = {}
+        context.update(self.dynamic_system_base.get_dynamic_system_state('raw'))
+        context.update(self.dynamic_system_base.get_records())
+        context.update(self.controller_base.get_records())
+        context.update(self.metric_processing.get_records())
+        context.update(self.reward_calculator.get_records())
+        context.update(self.reward_calculator.get_agent_state_records())
+        context.update(self._get_gains_for_agent())
+        return context
     
     def _build_agent_to_controller_map(self):
         """
@@ -485,11 +558,25 @@ class SimulationManager:
             # El agent_name sigue el patrón: {gain_type}_{var_obj}
             parts = agent_name.split('_', 1)
             if len(parts) != 2:
-                continue
+                raise ValueError(
+                    f"Enabled agent '{agent_name}' must follow the canonical name "
+                    "{gain_type}_{var_obj}"
+                )
             
             gain_type, var_obj = parts
-            if var_obj in var_obj_to_controller:
-                controller_name = var_obj_to_controller[var_obj]
-                agent_to_controller[agent_name] = (controller_name, gain_type)
+            if var_obj not in var_obj_to_controller:
+                raise ValueError(
+                    f"Enabled agent '{agent_name}' references var_obj '{var_obj}', "
+                    "but no controller declares that objective variable"
+                )
+
+            controller_name = var_obj_to_controller[var_obj]
+            controller_config = self.config_main['controller_base']['controllers'][controller_name]
+            if gain_type not in controller_config['initial_conditions']:
+                raise ValueError(
+                    f"Enabled agent '{agent_name}' references gain '{gain_type}', "
+                    f"but controller '{controller_name}' does not declare it"
+                )
+            agent_to_controller[agent_name] = (controller_name, gain_type)
         
         return agent_to_controller
