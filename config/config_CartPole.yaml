@@ -174,7 +174,7 @@ reward_base:
             u: {method: rms, range: [-1.0, 1.0]}         # Acción de control [-1, 1]
             delta_u: {method: rms, range: [-2.0, 2.0]}   # Variacion maxima analitica entre pasos con actuador saturado [-1, 1]
           cart_position:
-            e: {method: rms, range: [-0.6, 0.6]}         # Error en espacio normalizado [-1, 1]
+            e: {method: rms, range: [-0.4, 0.4]}         # Error en espacio normalizado [-1, 1]
             edot: {method: rms, range: [-0.5, 0.5]}    # Derivada error normalizado (conservador)
             I: {method: rms, range: [-0.7, 0.7]}         # Integral error normalizado (acumulación)
             u: {method: rms, range: [-1.0, 1.0]}         # Acción de control [-1, 1]
@@ -235,20 +235,20 @@ reward_base:
         reward_form: cost                             # score: 1-J | cost: -J
         component_weights:
           base:
-            pendulum_angle: 0.7
-            cart_position: 0.7
+            pendulum_angle: 0.8
+            cart_position: 0.8
           progress:
-            pendulum_angle: 0.3
-            cart_position: 0.3
+            pendulum_angle: 0.25
+            cart_position: 0.25
         alpha_e:
-          pendulum_angle: 0.65
-          cart_position: 0.65
+          pendulum_angle: 0.8
+          cart_position: 0.8
         effort_weight:
-          pendulum_angle: 0.2
-          cart_position: 0.2
+          pendulum_angle: 0.0
+          cart_position: 0.0
         effort_gate_kappa:
-          pendulum_angle: 8.0
-          cart_position: 8.0
+          pendulum_angle: 0.0
+          cart_position: 0.0
       feature_budget_conservation:
         enabled: false
         strict_weight_sum: false
@@ -269,16 +269,16 @@ reward_base:
       potential_features: [L_e, L_edot]
       potential_weights:
         L_e:
-          pendulum_angle: 0.45
-          cart_position: 0.2
+          pendulum_angle: 0.7
+          cart_position: 0.6
         L_edot:
-          pendulum_angle: 0.25
-          cart_position: 0.1
+          pendulum_angle: 0.3
+          cart_position: 0.4
       potential_transform:
         value_power: 1.0                                      # 1.0 lineal | 2.0 cuadratico tipo Lyapunov
         square_terms: false
       progress_positive_only: true                                    #*Si llegara a ser False requiere de implementar un "progress_clip_min"
-      progress_clip_max: 0.05
+      progress_clip_max: 0.005
       contribution_error_signal: error_{var_obj}
       contribution_effort_signal: u_alloc_{var_obj}
       correction_signs:

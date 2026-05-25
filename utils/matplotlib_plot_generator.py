@@ -14,6 +14,10 @@ import gc
 # 1.1: Logger a nivel de módulo
 logger = logging.getLogger(__name__)
 
+CONTROLLER_REWARD_PREFIX = 'total_reward_controller_'
+CONTROLLER_PERFORMANCE_PREFIX = 'performance_controller_'
+CONTROLLER_SUMMARY_STAT_SUFFIXES = ('_mean', '_std', '_min', '_p25', '_p50', '_p75', '_max')
+
 class MatplotlibPlotGenerator:
     """
     Generates plots using Matplotlib.
@@ -28,6 +32,21 @@ class MatplotlibPlotGenerator:
         """Libera datos tabulares cacheados entre corridas de visualizacion."""
         self._summary_cache.clear()
         gc.collect()
+
+    @staticmethod
+    def _is_base_controller_metric_column(column_name: str, prefix: str) -> bool:
+        """Detecta metricas base por controlador y excluye agregados del summary."""
+        if not isinstance(column_name, str) or not column_name.startswith(prefix):
+            return False
+
+        controller_suffix = column_name[len(prefix):]
+        if not controller_suffix:
+            return False
+
+        return not any(
+            controller_suffix.endswith(stat_suffix)
+            for stat_suffix in CONTROLLER_SUMMARY_STAT_SUFFIXES
+        )
 
     # --- Método Helper Centralizado para Estilos ---
 
@@ -519,24 +538,24 @@ class MatplotlibPlotGenerator:
         if not x_var or not y_var: raise ValueError(f"Line plot '{plot_name}': Faltan 'x_variable' o 'y_variable'.")
         controller_reward_cols = []
         if y_var == 'total_reward':
-            controller_reward_cols = sorted([
+            controller_reward_cols = [
                 col for col in data.columns
-                if col.startswith('total_reward_controller_')
-            ])
+                if self._is_base_controller_metric_column(col, CONTROLLER_REWARD_PREFIX)
+            ]
         controller_performance_cols = []
         if y_var == 'performance':
             data = self._derive_controller_performance(data)
-            controller_performance_cols = sorted([
+            controller_performance_cols = [
                 col for col in data.columns
-                if col.startswith('performance_controller_')
-            ])
+                if self._is_base_controller_metric_column(col, CONTROLLER_PERFORMANCE_PREFIX)
+            ]
 
         controller_metric_cols = controller_reward_cols or controller_performance_cols
         if x_var not in data.columns:
             raise ValueError(f"Line plot '{plot_name}': Columnas '{x_var}' o '{y_var}' no encontradas.")
         if y_var in ('total_reward', 'performance') and not controller_metric_cols:
             raise ValueError(
-                f"Line plot '{plot_name}': No se encontraron columnas 'total_reward_controller_*'."
+                f"Line plot '{plot_name}': No se encontraron metricas base por controlador."
             )
         if y_var not in data.columns and not controller_metric_cols:
             raise ValueError(f"Line plot '{plot_name}': Columnas '{x_var}' o '{y_var}' no encontradas.")
@@ -551,11 +570,11 @@ class MatplotlibPlotGenerator:
             if controller_reward_cols:
                 style_config['title'] = 'Controller Total Reward per Episode'
                 style_config['ylabel'] = 'Episode Total Reward [-]'
-                label_prefix = 'total_reward_'
+                label_prefix = CONTROLLER_REWARD_PREFIX
             else:
                 style_config['title'] = 'Controller Performance per Episode'
                 style_config['ylabel'] = 'Controller Performance [-/s]'
-                label_prefix = 'performance_'
+                label_prefix = CONTROLLER_PERFORMANCE_PREFIX
             style_config['show_legend'] = True
 
             line_colors = style_config.get('line_colors')
@@ -615,10 +634,10 @@ class MatplotlibPlotGenerator:
         if 'final_t_sec' not in data.columns:
             return data
 
-        reward_cols = sorted([
+        reward_cols = [
             col for col in data.columns
-            if col.startswith('total_reward_controller_')
-        ])
+            if self._is_base_controller_metric_column(col, CONTROLLER_REWARD_PREFIX)
+        ]
         if not reward_cols:
             return data
 
@@ -626,7 +645,7 @@ class MatplotlibPlotGenerator:
         duration = pd.to_numeric(derived['final_t_sec'], errors='coerce')
         valid_duration = duration.where(duration > 0.0)
         for reward_col in reward_cols:
-            controller_suffix = reward_col.replace('total_reward_controller_', '')
+            controller_suffix = reward_col[len(CONTROLLER_REWARD_PREFIX):]
             reward_total = pd.to_numeric(derived[reward_col], errors='coerce')
             derived[f'performance_controller_{controller_suffix}'] = reward_total / valid_duration
 
