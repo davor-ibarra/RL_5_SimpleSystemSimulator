@@ -235,7 +235,7 @@ class MetricProcessing:
         output_limits = self.normalization_config['output_limits']
         
         # Extraer operaciones pre-compiladas estáticas
-        jobs = self.feature_jobs.get(var_obj, [])
+        jobs = self.feature_jobs[var_obj]
         
         for (f_key, sig_key, dest_agg, dest_norm, method, v_range) in jobs:
             values = columnar_data[sig_key]
@@ -309,6 +309,8 @@ class MetricProcessing:
             'delta_u_alloc',
             'u_conflict',
             'delta_u_conflict',
+            'is_saturated',
+            'saturation_proportion',
             'u_eff',
             'delta_u_eff'
         ]

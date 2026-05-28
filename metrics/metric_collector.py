@@ -119,7 +119,7 @@ class MetricCollector:
                 termination_reason, L_e_*, rewards, actions, learn_info, etc.)
         """
         for key in self.interval_keys:
-            self.interval_data[key].append(interval_flat_data[key] if key in interval_flat_data else None)
+            self.interval_data[key].append(interval_flat_data[key])
         
         self.interval_count += 1
     

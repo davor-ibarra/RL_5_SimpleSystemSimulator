@@ -234,7 +234,7 @@ class ResultHandler:
         return pd.DataFrame(table_data)
     
     def _get_action_label(self, action_space, action_idx):
-        action_name = action_space.get(action_idx, action_space.get(str(action_idx), action_idx))
+        action_name = action_space[action_idx]
         return f'action_{action_idx}_{action_name}'
     
     def finalize_run(self):
