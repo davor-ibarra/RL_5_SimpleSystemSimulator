@@ -56,6 +56,7 @@ class ControllerBase:
         self.prev_u_total = 0.0
         self.delta_u_total = 0.0
         self.is_saturated_global = False
+        self.saturation_excess = 0.0
     
     def reset_episode(self):
         """
@@ -67,6 +68,7 @@ class ControllerBase:
         self.prev_u_total = 0.0
         self.delta_u_total = 0.0
         self.is_saturated_global = False
+        self.saturation_excess = 0.0
         for controller_instance in self.controllers.values():
             controller_instance.reset_episode()
     
@@ -101,6 +103,7 @@ class ControllerBase:
         self.u_total = self.u_total_saturated
         self.delta_u_total = self.u_total - self.prev_u_total
         self.is_saturated_global = self.global_actuator_enabled and (self.u_total_raw != self.u_total_saturated) and (self.u_total_raw != 0.0)
+        self.saturation_excess = abs(self.u_total_raw - self.u_total_saturated)
         self._return_state_to_controllers()
         
         return self.u_total_saturated
@@ -115,36 +118,89 @@ class ControllerBase:
         else:
             scaling_factor = 1.0
 
-        if self.u_total_saturated > 0.0:
-            u_total_sign = 1.0
-        elif self.u_total_saturated < 0.0:
-            u_total_sign = -1.0
+        if self.u_total_raw > 0.0:
+            u_raw_sign = 1.0
+        elif self.u_total_raw < 0.0:
+            u_raw_sign = -1.0
         else:
-            u_total_sign = 0.0
+            u_raw_sign = 0.0
+
+        if self.u_total_saturated > 0.0:
+            u_saturated_sign = 1.0
+        elif self.u_total_saturated < 0.0:
+            u_saturated_sign = -1.0
+        else:
+            u_saturated_sign = 0.0
 
         support_total = 0.0
-        if u_total_sign != 0.0:
+        if u_saturated_sign != 0.0:
             for controller in self.controllers.values():
-                support_total += max(0.0, u_total_sign * controller.control_action)
+                support_total += max(0.0, u_saturated_sign * controller.control_action)
+
+        saturation_support_total = 0.0
+        if self.is_saturated_global and u_raw_sign != 0.0:
+            for controller in self.controllers.values():
+                saturation_support_total += max(0.0, u_raw_sign * controller.control_action)
+
+        positive_demand = 0.0
+        negative_demand = 0.0
+        for controller in self.controllers.values():
+            positive_demand += max(0.0, controller.control_action)
+            negative_demand += max(0.0, -controller.control_action)
+        cancelled_demand = min(positive_demand, negative_demand)
 
         for controller in self.controllers.values():
             control_action_eff = scaling_factor * controller.control_action
 
             if support_total > 0.0:
-                support = max(0.0, u_total_sign * controller.control_action)
+                support = max(0.0, u_saturated_sign * controller.control_action)
                 u_alloc = self.u_total_saturated * support / support_total
-                u_conflict = max(0.0, -u_total_sign * controller.control_action)
             else:
                 u_alloc = 0.0
-                u_conflict = 0.0
+
+            u_conflict = self._compute_cancelled_conflict(
+                controller.control_action,
+                positive_demand,
+                negative_demand,
+                cancelled_demand
+            )
+            saturation_proportion = self._compute_local_saturation_proportion(
+                controller.control_action,
+                u_raw_sign,
+                saturation_support_total
+            )
+            is_saturated_local = saturation_proportion > 0.0
 
             controller.return_state_to_controller(
                 control_action_eff,
                 u_alloc,
                 u_conflict,
-                self.is_saturated_global,
+                is_saturated_local,
+                saturation_proportion,
                 self.dt_sec
             )
+
+    def _compute_cancelled_conflict(self, control_action, positive_demand, negative_demand, cancelled_demand):
+        if cancelled_demand <= 0.0 or control_action == 0.0:
+            return 0.0
+
+        if control_action > 0.0 and positive_demand > 0.0:
+            return cancelled_demand * control_action / positive_demand
+
+        if control_action < 0.0 and negative_demand > 0.0:
+            return cancelled_demand * (-control_action) / negative_demand
+
+        return 0.0
+
+    def _compute_local_saturation_proportion(self, control_action, u_raw_sign, saturation_support_total):
+        if not self.is_saturated_global or u_raw_sign == 0.0 or saturation_support_total <= 0.0:
+            return 0.0
+
+        support = max(0.0, u_raw_sign * control_action)
+        if support <= 0.0:
+            return 0.0
+
+        return min(1.0, self.saturation_excess / saturation_support_total)
     
     def get_records(self):
         """
@@ -161,6 +217,7 @@ class ControllerBase:
         records['u_total_raw'] = self.u_total_raw
         records['u_total_saturated'] = self.u_total_saturated
         records['is_saturated_global'] = self.is_saturated_global
+        records['saturation_excess'] = self.saturation_excess
         records['prev_u_total'] = self.prev_u_total
         records['delta_u_total'] = self.delta_u_total
         

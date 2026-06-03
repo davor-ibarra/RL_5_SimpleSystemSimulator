@@ -235,18 +235,28 @@ class PIDController:
         """
         return {'kp': self.kp, 'ki': self.ki, 'kd': self.kd}
 
-    def return_state_to_controller(self, control_action_eff, u_alloc, u_conflict, is_saturated_global, dt_sec):
+    def return_state_to_controller(
+        self,
+        control_action_eff,
+        u_alloc,
+        u_conflict,
+        is_saturated,
+        saturation_proportion,
+        dt_sec
+    ):
         """
         Recibe las señales calculadas por ControllerBase y actualiza estado interno.
 
         Args:
             control_action_eff (float): Acción local escalada por saturación global.
             u_alloc (float): Porción física asignada desde u_total.
-            u_conflict (float): Demanda local opuesta al signo de u_total.
-            is_saturated_global (bool): Si el actuador global está saturado.
+            u_conflict (float): Demanda local cancelada por acciones opuestas.
+            is_saturated (bool): Si la saturación global afecta localmente a este lazo.
+            saturation_proportion (float): Severidad local atribuida de saturación.
             dt_sec (float): Paso de tiempo.
         """
-        self.is_saturated = is_saturated_global
+        self.is_saturated = is_saturated
+        self.saturation_proportion = saturation_proportion
 
         self.prev_control_action_eff = self.control_action_eff
         self.control_action_eff = control_action_eff

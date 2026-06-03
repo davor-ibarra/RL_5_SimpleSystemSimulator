@@ -2,10 +2,10 @@
 local_control_quality_reward.py
 
 Responsabilidad:
-Calcular el costo local compuesto y la mejora marginal local por controlador.
+Calcular costo local absoluto y calidad marginal local por controlador.
 
-Este bloque representa la autonomia local. No incorpora conflicto entre
-controladores; esa responsabilidad pertenece al bloque estrategico.
+El modulo no conoce el sistema dinamico. Consume senales declaradas por
+plantilla y escalas analiticas fijadas en YAML.
 """
 
 import math
@@ -16,7 +16,7 @@ class LocalControlQualityReward:
     Recompensa local por calidad del lazo.
 
     Expone costos en [0, 1], calidad firmada en [-1, 1] y una senal marginal
-    respecto de una linea base suavizada.
+    respecto de una linea base suavizada declarada por controlador.
     """
 
     def __init__(self, config_main):
@@ -39,7 +39,8 @@ class LocalControlQualityReward:
             'error_power_expansive',
             'residual_velocity',
             'integral_memory',
-            'allocated_effort'
+            'allocated_effort',
+            'conflict_effort'
         ]
         self._compile_jobs()
         self.reset_episode()
@@ -78,7 +79,9 @@ class LocalControlQualityReward:
         self.last_components_by_var = {}
 
     def evaluate(self, reward_component, extra_reward_component):
-        records = {}
+        records = {
+            'local_control_quality_normalized_mode': float(self.normalized_reward_mode)
+        }
         components_by_var = {}
 
         for var_obj in self.var_objs:
@@ -92,11 +95,11 @@ class LocalControlQualityReward:
             allocated_effort_series = extra_reward_component[
                 self.signals['allocated_effort'].format(var_obj=var_obj)
             ]
+            conflict_effort_series = extra_reward_component[
+                self.signals['conflict_effort'].format(var_obj=var_obj)
+            ]
 
             self._require_same_length(var_obj, error_series, derivative_error_series)
-            self._require_same_length(var_obj, error_series, integral_error_series)
-            self._require_same_length(var_obj, error_series, allocated_effort_series)
-
             error_power_expansive_series = []
             error_power_dissipative_series = []
             for idx in range(len(error_series)):
@@ -145,6 +148,12 @@ class LocalControlQualityReward:
                 self.aggregation['allocated_effort'],
                 f'allocated_effort_{var_obj}'
             )
+            conflict_effort_cost = self._normalized_series_cost(
+                conflict_effort_series,
+                self.normalization_bounds['conflict_effort'][var_obj],
+                self.aggregation['conflict_effort'],
+                f'conflict_effort_{var_obj}'
+            )
 
             local_cost = self._weighted_local_cost(
                 var_obj,
@@ -152,7 +161,8 @@ class LocalControlQualityReward:
                 error_power_expansive_cost,
                 residual_velocity_cost,
                 integral_cost,
-                allocated_effort_cost
+                allocated_effort_cost,
+                conflict_effort_cost
             )
             local_quality = 1.0 - local_cost
             local_quality_signed = 1.0 - 2.0 * local_cost
@@ -175,6 +185,7 @@ class LocalControlQualityReward:
             records[f'local_residual_velocity_cost_01_{var_obj}'] = residual_velocity_cost
             records[f'local_integral_cost_01_{var_obj}'] = integral_cost
             records[f'local_allocated_effort_cost_01_{var_obj}'] = allocated_effort_cost
+            records[f'local_conflict_effort_cost_01_{var_obj}'] = conflict_effort_cost
             records[f'local_cost_01_{var_obj}'] = local_cost
             records[f'local_quality_01_{var_obj}'] = local_quality
             records[f'local_quality_signed_{var_obj}'] = local_quality_signed
@@ -199,7 +210,8 @@ class LocalControlQualityReward:
         error_power_expansive_cost,
         residual_velocity_cost,
         integral_cost,
-        allocated_effort_cost
+        allocated_effort_cost,
+        conflict_effort_cost
     ):
         weighted_cost = (
             self.cost_weights['error_energy'][var_obj] * error_energy_cost
@@ -207,6 +219,7 @@ class LocalControlQualityReward:
             + self.cost_weights['residual_velocity'][var_obj] * residual_velocity_cost
             + self.cost_weights['integral_memory'][var_obj] * integral_cost
             + self.cost_weights['allocated_effort'][var_obj] * allocated_effort_cost
+            + self.cost_weights['conflict_effort'][var_obj] * conflict_effort_cost
         )
         if self.config['strict_weight_sum']:
             return self._clip_01(weighted_cost)
@@ -238,11 +251,9 @@ class LocalControlQualityReward:
         raise ValueError(f"Unsupported local reward aggregation method: {method}")
 
     def _require_same_length(self, var_obj, first_series, second_series):
-        if not first_series:
-            raise ValueError(f"Cannot compute local reward with empty series for {var_obj}")
         if len(first_series) != len(second_series):
             raise ValueError(
-                f"Local reward series must have same length for {var_obj}: "
+                f"Local reward error and derivative series must have same length for {var_obj}: "
                 f"{len(first_series)} != {len(second_series)}"
             )
 

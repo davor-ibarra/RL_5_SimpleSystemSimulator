@@ -127,6 +127,7 @@ agent_base:
       local_baseline_cost_01_cart_position: {enabled_agent: false, min: 0.0, max: 1.0, bins: 3, state_vars: []}
       cooperative_global_baseline_cost_01: {enabled_agent: false, min: 0.0, max: 1.0, bins: 3, state_vars: []}
       reward_curriculum_maturity: {enabled_agent: false, min: 0.0, max: 1.0, bins: 5, state_vars: []}
+      reward_lambda_curriculum: {enabled_agent: false, min: 0.0, max: 1.0, bins: 5, state_vars: []}
 # --- Reward Configuration ---
 reward_base:
   # --- 0. Reward Base Configuration ---
@@ -141,21 +142,25 @@ reward_base:
       reward_domain: signed_unit
       strict_weight_sum: true
       weight_tolerance: 1.0e-9
-      components:
-        local_quality: {weight: 0.25}
-        local_marginal_quality: {weight: 0.25}
-        cooperative_quality: {weight: 0.20}
-        cooperative_marginal_quality: {weight: 0.2}
-        coupling_penalty: {weight: 0.1}
-        cooperative_regime: {weight: 0.0}
-      cooperative_regime:
+      structured_weights:
+        autonomy: 0.55
+        cooperation: 0.30
+        strategy: 0.15
+      mixing:
+        rho_local: 0.85
+        rho_global: 0.7
+      curriculum:
+        lambda_schedule:
+          initial: 0.00
+          final: 0.30
         beta_schedule:
           alpha_freeze: 0.03
-          enforce_eta_beta_lt_alpha: false
-          beta_syn: {min: 1.00, max: 1.00}
-          beta_coop: {min: 0.45, max: 0.45}
-          beta_self: {min: 0.70, max: 0.70}
-          beta_fail: {min: 1.00, max: 1.00}
+          enforce_delta_beta_lt_kappa_alpha: false
+          kappa: 0.5
+          beta_syn: {initial: 0.60, final: 1.00}
+          beta_coop: {initial: 0.50, final: 0.10}
+          beta_self: {initial: 0.20, final: 0.70}
+          beta_fail: {initial: 0.50, final: 1.00}
   # --- 2. Reward Calculation Configuration ---
   reward_calculation:
     # --- Metric Processing ---
@@ -192,7 +197,6 @@ reward_base:
         derivative_error: derivative_error_{var_obj}
         integral_error: integral_error_{var_obj}
         allocated_effort: u_alloc_{var_obj}
-        conflict_effort: u_conflict_{var_obj}
       aggregation:
         error_energy: rms
         error_power_expansive: rms
@@ -200,60 +204,53 @@ reward_base:
         residual_velocity: rms
         integral_memory: rms
         allocated_effort: rms
-        conflict_effort: rms
       normalization_bounds:
         error:
-          pendulum_angle: 0.25
+          pendulum_angle: 0.3
           cart_position: 0.25
         derivative_error:
-          pendulum_angle: 1.00
-          cart_position: 0.40
+          pendulum_angle: 1.0
+          cart_position: 0.7
         error_power:
           pendulum_angle: 0.3
-          cart_position: 0.15
+          cart_position: 0.25
         integral_error:
           pendulum_angle: 1.5
-          cart_position: 0.5
+          cart_position: 1.5
         allocated_effort:
-          pendulum_angle: 0.70
-          cart_position: 1.00
-        conflict_effort:
-          pendulum_angle: 1.00
+          pendulum_angle: 0.85
           cart_position: 1.00
       cost_weights:
         error_energy:
-          pendulum_angle: 0.6
-          cart_position: 0.30
+          pendulum_angle: 0.5
+          cart_position: 0.75
         error_power_expansive:
-          pendulum_angle: 0.25
-          cart_position: 0.25
+          pendulum_angle: 0.3
+          cart_position: 0.12
         residual_velocity:
-          pendulum_angle: 0.05
-          cart_position: 0.10
+          pendulum_angle: 0.15
+          cart_position: 0.08
         integral_memory:
-          pendulum_angle: 0.00
-          cart_position: 0.20
+          pendulum_angle: 0.0
+          cart_position: 0.03
         allocated_effort:
-          pendulum_angle: 0.0
-          cart_position: 0.0
-        conflict_effort:
-          pendulum_angle: 0.0
-          cart_position: 0.0
+          pendulum_angle: 0.05
+          cart_position: 0.02
       residual_velocity_gate:
         sigma_error:
-          pendulum_angle: 0.20
-          cart_position: 0.15
+          pendulum_angle: 0.25
+          cart_position: 0.35
       marginal_baseline:
         mode: smoothed_baseline
         initial_cost_01:
           pendulum_angle: 0.55
-          cart_position: 0.30
+          cart_position: 0.50
         tau:
-          pendulum_angle: 0.10
-          cart_position: 0.10
+          pendulum_angle: 0.06
+          cart_position: 0.05
         delta_cost_ref:
-          pendulum_angle: 0.08
-          cart_position: 0.08
+          pendulum_angle: 0.10
+          cart_position: 0.14
     cooperative_control_quality:
       enabled: true
       normalized_reward_mode: true
@@ -271,54 +268,74 @@ reward_base:
         weight_tolerance: 1.0e-9
         feature_weights:
           local_error_energy_cost_01:
-            pendulum_angle: 0.55
-            cart_position: 0.55
+            pendulum_angle: 0.5
+            cart_position: 0.70
           local_error_power_expansive_cost_01:
-            pendulum_angle: 0.25
-            cart_position: 0.25
+            pendulum_angle: 0.35
+            cart_position: 0.18
           local_residual_velocity_cost_01:
-            pendulum_angle: 0.20
-            cart_position: 0.20
+            pendulum_angle: 0.15
+            cart_position: 0.12
         variable_weights:
-          pendulum_angle: 0.7
-          cart_position: 0.3
+          pendulum_angle: 0.65
+          cart_position: 0.35
       marginal_baseline:
         mode: smoothed_baseline
-        initial_cost_01: 0.45
-        tau: 0.1
-        delta_cost_ref: 0.08
+        initial_cost_01: 0.50
+        tau: 0.05
+        delta_cost_ref: 0.1
       credit_assignment:
         error_signal: error_{var_obj}
         allocated_effort_signal: u_alloc_{var_obj}
         conflict_effort_signal: u_conflict_{var_obj}
         reduction_mode: average
-        correction_signs:
+        correction_sign:
           pendulum_angle: 1.0
-          cart_position: 1.25
+          cart_position: 1.0
+        credit_gain:
+          pendulum_angle: 1.0
+          cart_position: 1.0
         harmful_conflict_weight:
           pendulum_angle: 1.0
           cart_position: 1.25
-        expected_share:
-          pendulum_angle: 0.5
-          cart_position: 0.5
-        max_multiplier: 1.0
         epsilon: 1.0e-6
-    coupling_penalty:
+    internal_risk_penalty:
       enabled: true
       normalized_reward_mode: true
-      reward_name: coupling_penalty
-      module_path: rewards.coupling_penalty_reward
-      class_name: CouplingPenaltyReward
+      reward_name: internal_risk_penalty
+      module_path: rewards.internal_risk_penalty_reward
+      class_name: InternalRiskPenaltyReward
+      strict_weight_sum: true
+      weight_tolerance: 1.0e-9
       signals:
+        conflict_effort: u_conflict_{var_obj}
         saturation: saturation_proportion_{var_obj}
       reduction:
+        conflict_effort: rms
         saturation: mean
-      conflict_weight:
-        pendulum_angle: 1.00
-        cart_position: 1.00
-      saturation_weight:
-        pendulum_angle: 0.00
-        cart_position: 0.00
+      normalization_bounds:
+        conflict_effort:
+          pendulum_angle: 1.5
+          cart_position: 2.5
+      risk_weights:
+        dynamic_expansive: 0.45
+        memory_integral: 0.12
+        authority: 0.15
+        conflict: 0.28
+      dynamic_expansive_weights:
+        expansive: 0.60
+        expansive_error: 0.25
+        expansive_residual: 0.15
+      memory_integral_weights:
+        base: 0.55
+        effort: 0.20
+        saturation: 0.25
+      authority_weights:
+        saturation: 0.6
+        effort_expansive: 0.4
+      conflict_weights:
+        base: 0.45
+        expansive: 0.55
 metrics_setup:
   # --- 1. System measure ----
   system_measure:

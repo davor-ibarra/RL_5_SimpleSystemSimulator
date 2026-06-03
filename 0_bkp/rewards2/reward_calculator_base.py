@@ -2,12 +2,10 @@
 reward_calculator_base.py
 
 Responsabilidad:
-Orquestar la recompensa declarativa del sistema.
+Orquestador del sistema de recompensas.
 
-Flujo:
-MetricProcessing -> bloques A/C/S -> composicion estructurada -> asignacion a
-agentes. Cada bloque expone registros planos y falla por acceso directo si la
-configuracion no declara lo que el calculo necesita.
+Instancia modulos declarados, coordina sus registros planos, compone en dominio
+firmado y asigna una recompensa por controlador a los agentes asociados.
 """
 
 import importlib
@@ -20,8 +18,8 @@ class RewardCalculatorBase:
     Orquestador de recompensa.
 
     Mantiene el contrato del proyecto:
-    config declarativa -> modulos independientes -> registros planos ->
-    recompensa por controlador o recompensa comun.
+    config declarativa -> modulos plug and play -> registros planos ->
+    asignacion por controller_reward.
     """
 
     def __init__(self, config_main):
@@ -36,12 +34,13 @@ class RewardCalculatorBase:
 
         self.local_control_quality_reward = self._instantiate_reward_module('local_control_quality')
         self.cooperative_control_quality_reward = self._instantiate_reward_module('cooperative_control_quality')
-        self.internal_risk_penalty_reward = self._instantiate_reward_module('internal_risk_penalty')
+        self.coupling_penalty_reward = self._instantiate_reward_module('coupling_penalty')
         self.reward_composer = RewardComposer(config_main, self.var_objs)
 
         self._last_local_record = {}
         self._last_cooperative_record = {}
-        self._last_strategy_record = {}
+        self._last_coupling_record = {}
+        self._last_regime_record = {}
         self._last_reward_composition_record = {}
         self._last_global_interval_reward = 0.0
         self._last_assign_internal_reward_dict = {}
@@ -106,7 +105,8 @@ class RewardCalculatorBase:
     def reset_episode(self):
         self._last_local_record = {}
         self._last_cooperative_record = {}
-        self._last_strategy_record = {}
+        self._last_coupling_record = {}
+        self._last_regime_record = {}
         self._last_reward_composition_record = {}
         self._last_global_interval_reward = 0.0
         self._last_assign_internal_reward_dict = {}
@@ -114,7 +114,7 @@ class RewardCalculatorBase:
 
         self.local_control_quality_reward.reset_episode()
         self.cooperative_control_quality_reward.reset_episode()
-        self.internal_risk_penalty_reward.reset_episode()
+        self.coupling_penalty_reward.reset_episode()
         self.reward_composer.reset_episode()
         self._reset_episode_accumulators()
 
@@ -131,24 +131,30 @@ class RewardCalculatorBase:
             extra_reward_component,
             local_records
         )
-        strategy_records, strategy_components = self.internal_risk_penalty_reward.evaluate(
-            local_records,
-            extra_reward_component
+        coupling_records, coupling_components = self.coupling_penalty_reward.evaluate(
+            extra_reward_component,
+            local_records
         )
-        composition_records, controller_rewards, regime_values_by_var = self.reward_composer.compose(
+        regime_records = self.reward_composer.build_regime_record(
+            local_components,
+            cooperative_components
+        )
+        composition_records, controller_rewards = self.reward_composer.compose(
             local_components,
             cooperative_components,
-            strategy_components
+            coupling_components
         )
 
         self._last_local_record = local_records
         self._last_cooperative_record = cooperative_records
-        self._last_strategy_record = strategy_records
+        self._last_coupling_record = coupling_records
+        self._last_regime_record = regime_records
         self._last_reward_composition_record = composition_records
         self._last_controller_rewards = controller_rewards
         self._last_global_interval_reward = self._compute_global_interval_reward(controller_rewards)
+        self._last_reward_composition_record['reward_base_interval_reward'] = self._last_global_interval_reward
         self._last_assign_internal_reward_dict = self._assign_rewards(controller_rewards)
-        self._accumulate_episode_records(composition_records, controller_rewards, regime_values_by_var)
+        self._accumulate_episode_regimes(regime_records, controller_rewards)
 
         return self._last_assign_internal_reward_dict
 
@@ -171,7 +177,7 @@ class RewardCalculatorBase:
                 assign_dict[agent_name] = global_reward
             return assign_dict
 
-        raise ValueError(f"Unsupported reward_approach: {self.reward_approach}")
+        raise ValueError(f"Unsupported reward_approach for refactored reward: {self.reward_approach}")
 
     def get_records(self):
         records = {
@@ -183,7 +189,8 @@ class RewardCalculatorBase:
 
         records.update(self._last_local_record)
         records.update(self._last_cooperative_record)
-        records.update(self._last_strategy_record)
+        records.update(self._last_coupling_record)
+        records.update(self._last_regime_record)
         records.update(self._last_reward_composition_record)
         return records
 
@@ -195,7 +202,15 @@ class RewardCalculatorBase:
         return records
 
     def get_episode_summary_rewards(self):
-        summary = self.reward_composer.get_episode_summary_record()
+        summary = {
+            'reward_curriculum_learning_rate': self.reward_composer.current_learning_rate,
+            'reward_curriculum_maturity': self.reward_composer.current_maturity,
+            'reward_curriculum_frozen': float(self.reward_composer.curriculum_frozen),
+            'reward_beta_syn': self.reward_composer.current_betas['syn'],
+            'reward_beta_coop': self.reward_composer.current_betas['coop'],
+            'reward_beta_self': self.reward_composer.current_betas['self'],
+            'reward_beta_fail': self.reward_composer.current_betas['fail']
+        }
 
         interval_count = self.episode_interval_count
         if interval_count <= 0:
@@ -214,12 +229,6 @@ class RewardCalculatorBase:
             summary[f'episode_mean_regime_phi_fail_{var_obj}'] = (
                 self.episode_regime_sums[var_obj]['fail'] / interval_count
             )
-            summary[f'episode_mean_reward_base_signed_{var_obj}'] = (
-                self.episode_base_reward_sums[var_obj] / interval_count
-            )
-            summary[f'episode_mean_reward_curriculum_signed_{var_obj}'] = (
-                self.episode_curriculum_reward_sums[var_obj] / interval_count
-            )
             summary[f'episode_mean_reward_signed_{var_obj}'] = (
                 self.episode_reward_sums[var_obj] / interval_count
             )
@@ -237,28 +246,16 @@ class RewardCalculatorBase:
             }
             for var_obj in self.var_objs
         }
-        self.episode_base_reward_sums = {
-            var_obj: 0.0
-            for var_obj in self.var_objs
-        }
-        self.episode_curriculum_reward_sums = {
-            var_obj: 0.0
-            for var_obj in self.var_objs
-        }
         self.episode_reward_sums = {
             var_obj: 0.0
             for var_obj in self.var_objs
         }
 
-    def _accumulate_episode_records(self, composition_records, controller_rewards, regime_values_by_var):
+    def _accumulate_episode_regimes(self, regime_records, controller_rewards):
         self.episode_interval_count += 1
         for var_obj in self.var_objs:
-            self.episode_regime_sums[var_obj]['syn'] += regime_values_by_var[var_obj]['phi_syn']
-            self.episode_regime_sums[var_obj]['coop'] += regime_values_by_var[var_obj]['phi_coop']
-            self.episode_regime_sums[var_obj]['self'] += regime_values_by_var[var_obj]['phi_self']
-            self.episode_regime_sums[var_obj]['fail'] += regime_values_by_var[var_obj]['phi_fail']
-            self.episode_base_reward_sums[var_obj] += composition_records[f'reward_base_signed_{var_obj}']
-            self.episode_curriculum_reward_sums[var_obj] += composition_records[
-                f'reward_curriculum_signed_{var_obj}'
-            ]
+            self.episode_regime_sums[var_obj]['syn'] += regime_records[f'regime_phi_syn_{var_obj}']
+            self.episode_regime_sums[var_obj]['coop'] += regime_records[f'regime_phi_coop_{var_obj}']
+            self.episode_regime_sums[var_obj]['self'] += regime_records[f'regime_phi_self_{var_obj}']
+            self.episode_regime_sums[var_obj]['fail'] += regime_records[f'regime_phi_fail_{var_obj}']
             self.episode_reward_sums[var_obj] += controller_rewards[var_obj]
