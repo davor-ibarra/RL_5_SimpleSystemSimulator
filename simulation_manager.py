@@ -132,6 +132,7 @@ class SimulationManager:
         step_idx_global = 1
         step_flat_data_t0.update(self.dynamic_system_base.get_records())
         step_flat_data_t0.update(self.controller_base.get_records())
+        self.metric_processing.normalize_step_record(step_flat_data_t0)
         self.metric_collector.on_step(step_flat_data_t0)
         
         # 6. Loop de intervalos hasta término por tiempo o condición del sistema
@@ -255,6 +256,7 @@ class SimulationManager:
             step_flat_data = {'t_sec': self.dynamic_system_base.current_time}
             step_flat_data.update(self.dynamic_system_base.get_records())
             step_flat_data.update(self.controller_base.get_records())
+            self.metric_processing.normalize_step_record(step_flat_data)
             self.metric_collector.on_step(step_flat_data)
             
             # 2.4b. Acumular step record para MetricProcessing
@@ -349,9 +351,11 @@ class SimulationManager:
         learn_info = interval_level['learn_info']
         flat.update(learn_info)
         
-        # 6. Actions: action_<agent_name> → decisions
+        # 6. Actions: action_<agent_name> -> decisions and gain-delta diagnostics
         vars_decision = actions_dict['vars_decision']
         flat.update(vars_decision)
+        vars_delta = actions_dict['vars_delta']
+        flat.update(vars_delta)
         
         # 7. Agent parameters (epsilon, learning_rate, Q-stats) — via get_records()
         flat.update(self.agent_base.get_records())
@@ -383,6 +387,8 @@ class SimulationManager:
         
         # Obtener el mapping de acciones desde la configuración
         actions_space = self.config_main['agent_base']['agent_config']['actions']['actions_space']
+        actions_dict['actions_applied'] = False
+        actions_dict['vars_delta']['actions_applied'] = 0.0
 
         # Inicializar ganancias por controlador con sus valores actuales reales (evita errores de llaves faltantes)
         controller_gains = {}
@@ -390,7 +396,8 @@ class SimulationManager:
             controller_gains[controller_name] = self.controllers[controller_name].get_current_controller_gains()
             
         for agent_name, (controller_name, gain_type) in self.agent_to_controller_map.items():
-            current_value = actions_dict['vars_values'][agent_name]
+            current_value = controller_gains[controller_name][gain_type]
+            actions_dict['vars_values'][agent_name] = current_value
             action_decision = actions_dict['vars_decision'][f'action_{agent_name}']
             delta_gain = actions_dict['vars_delta'][f'delta_gain_{agent_name}']
             
@@ -398,21 +405,41 @@ class SimulationManager:
             action_str = actions_space[action_decision]
             
             if action_str == 'decrease':
-                new_value = current_value - delta_gain
+                requested_delta_gain = -delta_gain
             elif action_str == 'increase':
-                new_value = current_value + delta_gain
-            else: # 'maintain' o cualquier otro por defecto
-                new_value = current_value
+                requested_delta_gain = delta_gain
+            elif action_str == 'maintain':
+                requested_delta_gain = 0.0
+            else:
+                raise ValueError(f"Unsupported action label for {agent_name}: {action_str}")
+
+            unclipped_value = current_value + requested_delta_gain
             
             # Clipear al rango [min, max] definido en config del agente
             agent_cfg = agents_config[agent_name]
-            new_value = max(agent_cfg['min'], min(agent_cfg['max'], new_value))
+            new_value = max(agent_cfg['min'], min(agent_cfg['max'], unclipped_value))
+            applied_delta_gain = new_value - current_value
+            if requested_delta_gain == 0.0:
+                blocked_fraction = 0.0
+            else:
+                blocked_fraction = 1.0 - abs(applied_delta_gain) / abs(requested_delta_gain)
+                blocked_fraction = max(0.0, min(1.0, blocked_fraction))
+            action_requested_move = float(action_str != 'maintain')
+            action_blocked = float(action_requested_move > 0.0 and blocked_fraction > 0.0)
+
+            actions_dict['vars_delta'][f'delta_gain_requested_{agent_name}'] = requested_delta_gain
+            actions_dict['vars_delta'][f'delta_gain_applied_{agent_name}'] = applied_delta_gain
+            actions_dict['vars_delta'][f'action_requested_move_{agent_name}'] = action_requested_move
+            actions_dict['vars_delta'][f'action_blocked_{agent_name}'] = action_blocked
+            actions_dict['vars_delta'][f'action_blocked_fraction_{agent_name}'] = blocked_fraction
             
             controller_gains[controller_name][gain_type] = new_value
         
         # Aplicar ganancias a cada controlador
         for controller_name, gains in controller_gains.items():
             self.controllers[controller_name].update_gains(gains['kp'], gains['ki'], gains['kd'])
+        actions_dict['actions_applied'] = True
+        actions_dict['vars_delta']['actions_applied'] = 1.0
     
     def _build_initial_actions_dict(self):
         """
@@ -422,9 +449,12 @@ class SimulationManager:
             dict: actions_dict inicial
         """
         initial_actions = {
+            'actions_applied': False,
             'vars_values': {},
             'vars_decision': {},
-            'vars_delta': {}
+            'vars_delta': {
+                'actions_applied': 0.0
+            }
         }
         
         # Usar mapping precomputado para obtener valores iniciales
@@ -434,6 +464,11 @@ class SimulationManager:
             initial_actions['vars_values'][agent_name] = gains[gain_type]
             initial_actions['vars_decision'][f'action_{agent_name}'] = 1
             initial_actions['vars_delta'][f'delta_gain_{agent_name}'] = self.agent_base.agent_gain_steps[agent_name]
+            initial_actions['vars_delta'][f'delta_gain_requested_{agent_name}'] = 0.0
+            initial_actions['vars_delta'][f'delta_gain_applied_{agent_name}'] = 0.0
+            initial_actions['vars_delta'][f'action_requested_move_{agent_name}'] = 0.0
+            initial_actions['vars_delta'][f'action_blocked_{agent_name}'] = 0.0
+            initial_actions['vars_delta'][f'action_blocked_fraction_{agent_name}'] = 0.0
         
         return initial_actions
     

@@ -1,29 +1,35 @@
 """
-cooperative_control_quality_reward.py
+cooperative_transition_evaluator.py
 
 Responsabilidad:
-Calcular calidad global, progreso global y credito cooperativo individual.
+Calcular la calidad cooperativa global y el progreso global de la transicion.
+
+Este bloque no asigna credito fino. Solo expone R_GQ y Delta_G para que una
+capa posterior decida si el progreso se entrega por controlador, por ganancia
+o como recompensa comun.
 """
 
 
-class CooperativeControlQualityReward:
+class CooperativeTransitionEvaluator:
     """
-    Bloque cooperativo acreditado.
+    Evaluador cooperativo de transicion.
 
-    Produce R_GQ global y R_GM por controlador. La mezcla rho_G pertenece al
-    compositor final para mantener una sola capa de formulacion.
+    Produce costo/calidad global, potencial cooperativo por lazo y mejora
+    global respecto de una linea base suavizada. La mezcla rho_G y la
+    asignacion de Delta_G no pertenecen a este bloque.
     """
 
     def __init__(self, config_main):
         self.config_main = config_main
-        self.config = config_main['reward_base']['reward_calculation']['cooperative_control_quality']
+        self.config = config_main['reward_base']['reward_calculation'][
+            'cooperative_transition_evaluator'
+        ]
         self.normalized_reward_mode = self.config['normalized_reward_mode']
         if not self.normalized_reward_mode:
-            raise ValueError("CooperativeControlQualityReward requires normalized_reward_mode=true")
+            raise ValueError("CooperativeTransitionEvaluator requires normalized_reward_mode=true")
 
         self.global_potential = self.config['global_potential']
         self.marginal_baseline = self.config['marginal_baseline']
-        self.credit_assignment = self.config['credit_assignment']
         self.var_objs = self._extract_var_objs()
         self._compile_jobs()
         self.reset_episode()
@@ -48,7 +54,8 @@ class CooperativeControlQualityReward:
                 weight = self.feature_weights[feature_name][var_obj]
                 if weight < 0.0:
                     raise ValueError(
-                        f"Cooperative feature weight must be non-negative: {feature_name}_{var_obj}={weight}"
+                        f"Cooperative feature weight must be non-negative: "
+                        f"{feature_name}_{var_obj}={weight}"
                     )
                 feature_weight_sum += weight
 
@@ -57,7 +64,8 @@ class CooperativeControlQualityReward:
                 and abs(feature_weight_sum - 1.0) > self.global_potential['weight_tolerance']
             ):
                 raise ValueError(
-                    f"Cooperative feature weights for {var_obj} must sum 1.0, got {feature_weight_sum}"
+                    f"Cooperative feature weights for {var_obj} must sum 1.0, "
+                    f"got {feature_weight_sum}"
                 )
             if feature_weight_sum <= 0.0:
                 raise ValueError(f"Cooperative feature weights for {var_obj} must be positive")
@@ -75,7 +83,7 @@ class CooperativeControlQualityReward:
     def reset_episode(self):
         self.global_baseline_cost = self.marginal_baseline['initial_cost_01']
         self.last_record = {}
-        self.last_components_by_var = {}
+        self.last_components = {}
 
     def evaluate(self, reward_component, extra_reward_component, local_records):
         cooperative_potential_cost_by_var = self._compute_cooperative_potential_by_var(local_records)
@@ -93,8 +101,6 @@ class CooperativeControlQualityReward:
             + self.marginal_baseline['tau'] * global_cost
         )
 
-        credit_terms = self._compute_credit_terms(extra_reward_component)
-
         records = {
             'cooperative_global_cost_01': global_cost,
             'cooperative_global_quality_01': global_quality,
@@ -103,21 +109,8 @@ class CooperativeControlQualityReward:
             'cooperative_global_cost_delta': global_cost_delta,
             'cooperative_global_marginal_signed': global_marginal_signed
         }
-        components_by_var = {}
 
         for var_obj in self.var_objs:
-            helpful_fraction = credit_terms[var_obj]['helpful_fraction']
-            harmful_fraction = credit_terms[var_obj]['harmful_fraction']
-
-            if global_marginal_signed >= 0.0:
-                cooperative_marginal_signed = self._clip_signed(
-                    global_marginal_signed * (helpful_fraction - harmful_fraction)
-                )
-            else:
-                cooperative_marginal_signed = self._clip_signed(
-                    global_marginal_signed * (1.0 - helpful_fraction + harmful_fraction)
-                )
-
             potential_cost = cooperative_potential_cost_by_var[var_obj]
             potential_quality = 1.0 - potential_cost
             potential_quality_signed = 1.0 - 2.0 * potential_cost
@@ -125,20 +118,15 @@ class CooperativeControlQualityReward:
             records[f'cooperative_potential_cost_01_{var_obj}'] = potential_cost
             records[f'cooperative_potential_quality_01_{var_obj}'] = potential_quality
             records[f'cooperative_potential_quality_signed_{var_obj}'] = potential_quality_signed
-            records[f'credit_helpful_raw_{var_obj}'] = credit_terms[var_obj]['helpful_raw']
-            records[f'credit_harmful_raw_{var_obj}'] = credit_terms[var_obj]['harmful_raw']
-            records[f'credit_helpful_fraction_{var_obj}'] = helpful_fraction
-            records[f'credit_harmful_fraction_{var_obj}'] = harmful_fraction
-            records[f'cooperative_marginal_quality_signed_{var_obj}'] = cooperative_marginal_signed
 
-            components_by_var[var_obj] = {
-                'global_quality_signed': global_quality_signed,
-                'cooperative_marginal_quality_signed': cooperative_marginal_signed
-            }
+        components = {
+            'global_quality_signed': global_quality_signed,
+            'global_marginal_signed': global_marginal_signed
+        }
 
         self.last_record = records
-        self.last_components_by_var = components_by_var
-        return records, components_by_var
+        self.last_components = components
+        return records, components
 
     def _compute_cooperative_potential_by_var(self, local_records):
         cooperative_potential_by_var = {}
@@ -163,64 +151,6 @@ class CooperativeControlQualityReward:
         if self.global_potential['strict_variable_weight_sum']:
             return self._clip_01(weighted_cost)
         return self._clip_01(weighted_cost / self.variable_weight_sum)
-
-    def _compute_credit_terms(self, extra_reward_component):
-        credit_terms = {}
-        reduction_mode = self.credit_assignment['reduction_mode']
-
-        for var_obj in self.var_objs:
-            error_series = extra_reward_component[
-                self.credit_assignment['error_signal'].format(var_obj=var_obj)
-            ]
-            effort_series = extra_reward_component[
-                self.credit_assignment['allocated_effort_signal'].format(var_obj=var_obj)
-            ]
-            conflict_series = extra_reward_component[
-                self.credit_assignment['conflict_effort_signal'].format(var_obj=var_obj)
-            ]
-            self._require_same_length(var_obj, error_series, effort_series)
-            self._require_same_length(var_obj, error_series, conflict_series)
-
-            helpful_sum = 0.0
-            harmful_sum = 0.0
-            correction_sign = self.credit_assignment['correction_sign'][var_obj]
-            credit_gain = self.credit_assignment['credit_gain'][var_obj]
-            conflict_weight = self.credit_assignment['harmful_conflict_weight'][var_obj]
-            for idx in range(len(error_series)):
-                alignment = credit_gain * correction_sign * error_series[idx] * effort_series[idx]
-                helpful_sum += max(0.0, alignment)
-                harmful_sum += max(0.0, -alignment) + conflict_weight * abs(conflict_series[idx])
-
-            if reduction_mode == 'average':
-                helpful_raw = helpful_sum / len(error_series)
-                harmful_raw = harmful_sum / len(error_series)
-            elif reduction_mode == 'sum':
-                helpful_raw = helpful_sum
-                harmful_raw = harmful_sum
-            else:
-                raise ValueError(f"Unsupported cooperative credit reduction_mode: {reduction_mode}")
-
-            denominator = helpful_raw + harmful_raw + self.credit_assignment['epsilon']
-            if denominator <= 0.0:
-                raise ValueError("Cooperative credit denominator must be positive")
-
-            credit_terms[var_obj] = {
-                'helpful_raw': helpful_raw,
-                'harmful_raw': harmful_raw,
-                'helpful_fraction': helpful_raw / denominator,
-                'harmful_fraction': harmful_raw / denominator
-            }
-
-        return credit_terms
-
-    def _require_same_length(self, var_obj, first_series, second_series):
-        if not first_series:
-            raise ValueError(f"Cannot compute cooperative credit with empty series for {var_obj}")
-        if len(first_series) != len(second_series):
-            raise ValueError(
-                f"Cooperative credit series must have same length for {var_obj}: "
-                f"{len(first_series)} != {len(second_series)}"
-            )
 
     def _clip_01(self, value):
         return min(1.0, max(0.0, value))

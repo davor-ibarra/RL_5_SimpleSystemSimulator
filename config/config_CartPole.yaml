@@ -41,7 +41,7 @@ dynamic_system:
     output_limits: [-1.0, 1.0]
     ranges_params:
       pendulum_angle: [-1.0472, 1.0472]
-      pendulum_velocity: [-4.0, 4.0]
+      pendulum_velocity: [-3.5, 3.5]
       cart_position: [-5.0, 5.0]
       cart_velocity: [-8.0, 8.0]
 # --- Controller ---
@@ -83,7 +83,7 @@ agent_base:
   class_name: PIDQLearningAgent
   params:
     algorithm: q-learning                                      # sarsa | q-learning
-    discount_factor: 0.95                                      # Q-learning discount factor (gamma)
+    discount_factor: 0.997                                      # Q-learning discount factor (gamma)
     # Epsilon (Exploration Rate) Settings
     epsilon: 1.0
     epsilon_decay:
@@ -104,7 +104,7 @@ agent_base:
       actions_values:
         mode: universal     # universal | per_agent
         universal_params:
-          delta_gain: 0.25
+          delta_gain: 0.1
         per_agent_params:
           delta_gain:
             kp_pendulum_angle: 0.2
@@ -115,12 +115,12 @@ agent_base:
             kd_cart_position: 0.2
     # Agent and State Configuration
     agents:
-      kp_pendulum_angle:       {enabled_agent: true, min: 0.0, max: 10.0, state_vars: []}
-      ki_pendulum_angle:       {enabled_agent: true, min: 0.0, max: 10.0, state_vars: []}
-      kd_pendulum_angle:       {enabled_agent: true, min: 0.0, max: 10.0, state_vars: []}
-      kp_cart_position:        {enabled_agent: true, min: 0.0, max: 10.0, state_vars: []}
-      ki_cart_position:        {enabled_agent: true, min: 0.0, max: 10.0, state_vars: []}
-      kd_cart_position:        {enabled_agent: true, min: 0.0, max: 10.0, state_vars: []}
+      kp_pendulum_angle:       {enabled_agent: true, min: 0.0, max: 5.0, state_vars: []}
+      ki_pendulum_angle:       {enabled_agent: true, min: 0.0, max: 5.0, state_vars: []}
+      kd_pendulum_angle:       {enabled_agent: true, min: 0.0, max: 5.0, state_vars: []}
+      kp_cart_position:        {enabled_agent: true, min: 0.0, max: 5.0, state_vars: []}
+      ki_cart_position:        {enabled_agent: true, min: 0.0, max: 5.0, state_vars: []}
+      kd_cart_position:        {enabled_agent: true, min: 0.0, max: 5.0, state_vars: []}
       pendulum_angle: {enabled_agent: false, min: 0.0, max: 0.5, bins: 2, state_vars: []}
       cart_position: {enabled_agent: false, min: 0.0, max: 2.0, bins: 2, state_vars: []}
       local_baseline_cost_01_pendulum_angle: {enabled_agent: false, min: 0.0, max: 1.0, bins: 3, state_vars: []}
@@ -136,19 +136,24 @@ reward_base:
   class_name: RewardCalculatorBase
   # --- 1. Reward Configuration ---
   reward_config:
-    reward_approach: controller_reward                # unique_for_all_reward | controller_reward
+    reward_approach: controller_reward                     # unique_for_all_reward | controller_reward | agent_reward
     reward_composition:
       mode: composition                         # composition | curriculum_regime
       reward_domain: signed_unit
       strict_weight_sum: true
       weight_tolerance: 1.0e-9
       structured_weights:
-        autonomy: 0.55
-        cooperation: 0.30
+        autonomy: 0.4
+        cooperation: 0.45
         strategy: 0.15
       mixing:
-        rho_local: 0.85
+        rho_local: 0.7
         rho_global: 0.7
+      risk_ceiling:
+        enabled: true
+        mode: linear_signed_upper_bound
+        intercept: 1.0
+        slope: 2.0
       curriculum:
         lambda_schedule:
           initial: 0.00
@@ -167,23 +172,44 @@ reward_base:
     metric_processing:
       normalization:
         enabled: true
-        output_limits: [0.0, 1.0]     # [0.0, 1.0]    |    [-1.0, 1.0]  *ojo que esta opciÃ³n esta quebrada por el abs() en "LagrangeRewardCalculator"
-        params:  # abs | accum | mean | mean_squared | rms // proportion | trend | change_and_osci | keep_last
+        output_limits: [-1.0, 1.0]                      # [0.0, 1.0]    |    [-1.0, 1.0]
+        signals_params:
           pendulum_angle:
-            e: {method: rms, range: [-0.35, 0.35]}         # Error en espacio normalizado [-1, 1]
-            edot: {method: rms, range: [-1.2, 1.2]}    # Derivada error normalizado (conservador)
-            I: {method: rms, range: [-1.5, 1.5]}         # Integral error normalizado (acumulaciÃ³n)
-            u: {method: rms, range: [-1.0, 1.0]}         # AcciÃ³n de control [-1, 1]
-            delta_u: {method: rms, range: [-0.1, 0.1]}   # Variacion maxima analitica entre pasos con actuador saturado [-1, 1]
+            error_norm_pendulum_angle: {signal: error_pendulum_angle, range: [-1.0, 1.0]}
+            derivative_error_norm_pendulum_angle: {signal: derivative_error_pendulum_angle, range: [-4.0, 4.0]}
+            integral_error_norm_pendulum_angle: {signal: integral_error_pendulum_angle, range: [-0.7, 0.7]}
+            control_action_norm_pendulum_angle: {signal: control_action_pendulum_angle, range: [-8.0, 8.0]}
+            u_alloc_norm_pendulum_angle: {signal: u_alloc_pendulum_angle, range: [-1.0, 1.0]}
+            delta_u_alloc_norm_pendulum_angle: {signal: delta_u_alloc_pendulum_angle, range: [-0.1, 0.1]}
+            u_conflict_norm_pendulum_angle: {signal: u_conflict_pendulum_angle, range: [-4.0, 4.0]}
           cart_position:
-            e: {method: rms, range: [-0.25, 0.25]}         # Error en espacio normalizado [-1, 1]
-            edot: {method: rms, range: [-0.4, 0.4]}    # Derivada error normalizado (conservador)
-            I: {method: rms, range: [-0.5, 0.5]}         # Integral error normalizado (acumulaciÃ³n)
-            u: {method: rms, range: [-1.0, 1.0]}         # AcciÃ³n de control [-1, 1]
-            delta_u: {method: rms, range: [-0.1, 0.1]}   # Variacion maxima analitica entre pasos con actuador saturado [-1, 1]
-          global_vars:        # *ojo que global_vars no estÃ¡ completamente integrado con la recompensa principal, LagrangeRewardCalculator compila todos los features como si fueran per-variable
-            u_total:       {method: mean_squared ,range: [-1, 1]}
-            delta_u_total: {method: mean_squared, range: [-0.05, 0.05]}
+            error_norm_cart_position: {signal: error_cart_position, range: [-1.0, 1.0]}
+            derivative_error_norm_cart_position: {signal: derivative_error_cart_position, range: [-1.5, 1.5]}
+            integral_error_norm_cart_position: {signal: integral_error_cart_position, range: [-1.5, 1.5]}
+            control_action_norm_cart_position: {signal: control_action_cart_position, range: [-8.0, 8.0]}
+            u_alloc_norm_cart_position: {signal: u_alloc_cart_position, range: [-1.0, 1.0]}
+            delta_u_alloc_norm_cart_position: {signal: delta_u_alloc_cart_position, range: [-0.1, 0.1]}
+            u_conflict_norm_cart_position: {signal: u_conflict_cart_position, range: [-4.0, 4.0]}
+      aggregation:
+        enabled: true
+        normalizate_agg_too: true
+        output_limits: [0.0, 1.0]                       # Only if `normalizate_agg_too` is True
+        features_params:                                # abs | accum | mean | mean_squared | rms // proportion | trend | change_and_osci | keep_last
+          pendulum_angle:
+            e: {root_var: error_pendulum_angle, record: 'error_pendulum_angle_{method}', method: rms, range: [-0.6, 0.6]}
+            edot: {root_var: derivative_error_pendulum_angle, record: 'derivative_error_pendulum_angle_{method}', method: rms, range: [-1.5, 1.5]}
+            I: {root_var: integral_error_pendulum_angle, record: 'integral_error_pendulum_angle_{method}', method: rms, range: [-0.8, 0.8]}
+            u: {root_var: u_alloc_pendulum_angle, record: 'u_alloc_pendulum_angle_{method}', method: rms, range: [-1.0, 1.0]}
+            delta_u: {root_var: delta_u_alloc_pendulum_angle, record: 'delta_u_alloc_pendulum_angle_{method}', method: rms, range: [-0.1, 0.1]}
+          cart_position:
+            e: {root_var: error_cart_position, record: 'error_cart_position_{method}', method: rms, range: [-0.8, 0.8]}
+            edot: {root_var: derivative_error_cart_position, record: 'derivative_error_cart_position_{method}', method: rms, range: [-1.2, 1.2]}
+            I: {root_var: integral_error_cart_position, record: 'integral_error_cart_position_{method}', method: rms, range: [-1.0, 1.0]}
+            u: {root_var: u_alloc_cart_position, record: 'u_alloc_cart_position_{method}', method: rms, range: [-1.0, 1.0]}
+            delta_u: {root_var: delta_u_alloc_cart_position, record: 'delta_u_alloc_cart_position_{method}', method: rms, range: [-0.1, 0.1]}
+          global_vars:
+            u_total:       {root_var: u_total, method: mean_squared ,range: [-1, 1]}
+            delta_u_total: {root_var: delta_u_total, method: mean_squared ,range: [-0.05, 0.05]}
     local_control_quality:
       enabled: true
       normalized_reward_mode: true
@@ -206,89 +232,130 @@ reward_base:
         allocated_effort: rms
       normalization_bounds:
         error:
-          pendulum_angle: 0.3
-          cart_position: 0.25
+          pendulum_angle: 0.6
+          cart_position: 0.5
         derivative_error:
           pendulum_angle: 1.0
-          cart_position: 0.7
+          cart_position: 1.15
         error_power:
-          pendulum_angle: 0.3
-          cart_position: 0.25
+          pendulum_angle: 0.45
+          cart_position: 0.65
         integral_error:
           pendulum_angle: 1.5
-          cart_position: 1.5
+          cart_position: 1.2
         allocated_effort:
-          pendulum_angle: 0.85
-          cart_position: 1.00
+          pendulum_angle: 1.0
+          cart_position: 0.75
       cost_weights:
         error_energy:
-          pendulum_angle: 0.5
-          cart_position: 0.75
+          pendulum_angle: 0.35
+          cart_position: 0.20
         error_power_expansive:
-          pendulum_angle: 0.3
-          cart_position: 0.12
+          pendulum_angle: 0.55
+          cart_position: 0.25
         residual_velocity:
-          pendulum_angle: 0.15
-          cart_position: 0.08
+          pendulum_angle: 0.05
+          cart_position: 0.15
         integral_memory:
-          pendulum_angle: 0.0
-          cart_position: 0.03
+          pendulum_angle: 0.00
+          cart_position: 0.05
         allocated_effort:
           pendulum_angle: 0.05
-          cart_position: 0.02
+          cart_position: 0.35
       residual_velocity_gate:
         sigma_error:
-          pendulum_angle: 0.25
-          cart_position: 0.35
+          pendulum_angle: 0.22
+          cart_position: 0.30
       marginal_baseline:
         mode: smoothed_baseline
         initial_cost_01:
-          pendulum_angle: 0.55
-          cart_position: 0.50
+          pendulum_angle: 0.22
+          cart_position: 0.06
         tau:
           pendulum_angle: 0.06
-          cart_position: 0.05
+          cart_position: 0.06
         delta_cost_ref:
-          pendulum_angle: 0.10
-          cart_position: 0.14
-    cooperative_control_quality:
+          pendulum_angle: 0.18
+          cart_position: 0.22
+    cooperative_transition_evaluator:
       enabled: true
       normalized_reward_mode: true
-      reward_name: cooperative_control_quality
-      module_path: rewards.cooperative_control_quality_reward
-      class_name: CooperativeControlQualityReward
+      reward_name: cooperative_transition_evaluator
+      module_path: rewards.cooperative_transition_evaluator
+      class_name: CooperativeTransitionEvaluator
       global_potential:
         features: [
           local_error_energy_cost_01,
           local_error_power_expansive_cost_01,
-          local_residual_velocity_cost_01
+          local_residual_velocity_cost_01,
+          #local_integral_cost_01
         ]
         strict_feature_weight_sum: true
         strict_variable_weight_sum: true
         weight_tolerance: 1.0e-9
         feature_weights:
           local_error_energy_cost_01:
-            pendulum_angle: 0.5
-            cart_position: 0.70
-          local_error_power_expansive_cost_01:
             pendulum_angle: 0.35
-            cart_position: 0.18
+            cart_position: 0.35
+          local_error_power_expansive_cost_01:
+            pendulum_angle: 0.60
+            cart_position: 0.3
           local_residual_velocity_cost_01:
-            pendulum_angle: 0.15
-            cart_position: 0.12
+            pendulum_angle: 0.05
+            cart_position: 0.35
+          #local_integral_cost_01:
+          #  pendulum_angle: 0.0
+          #  cart_position: 0.1
         variable_weights:
-          pendulum_angle: 0.65
-          cart_position: 0.35
+          pendulum_angle: 0.72
+          cart_position: 0.28
       marginal_baseline:
         mode: smoothed_baseline
-        initial_cost_01: 0.50
-        tau: 0.05
-        delta_cost_ref: 0.1
-      credit_assignment:
-        error_signal: error_{var_obj}
-        allocated_effort_signal: u_alloc_{var_obj}
-        conflict_effort_signal: u_conflict_{var_obj}
+        initial_cost_01: 0.15
+        tau: 0.06
+        delta_cost_ref: 0.24
+    credit_allocator:
+      enabled: true
+      reward_name: credit_allocator
+      module_path: rewards.credit_allocator
+      class_name: CreditAllocator
+      controller_assignment:
+        mode: loop_effort_alignment
         reduction_mode: average
+        epsilon: 1.0e-6
+        inactive_credit_threshold: 5.0e-3
+        signals:
+          error: error_norm_{var_obj}
+          allocated_effort: u_alloc_norm_{var_obj}
+          conflict_effort: u_conflict_norm_{var_obj}
+        correction_sign:
+          pendulum_angle: 1.0
+          cart_position: 1.0
+        credit_gain:
+          pendulum_angle: 1.0
+          cart_position: 1.0
+        harmful_conflict_weight:
+          pendulum_angle: 0.3
+          cart_position: 0.6
+      agent_assignment:
+        mode: pid_incremental_control_credit
+        reduction_mode: average
+        epsilon: 1.0e-6
+        inactive_credit_threshold: 1.0e-6
+        signals:
+          error: error_norm_{var_obj}
+          derivative_error: derivative_error_norm_{var_obj}
+          integral_error: integral_error_norm_{var_obj}
+          conflict_effort: u_conflict_norm_{var_obj}
+        gain_basis:
+          kp: error
+          ki: integral_error
+          kd: derivative_error
+        effective_scale:
+          mode: allocated_over_control_action
+          control_action: control_action_{var_obj}
+          allocated_effort: u_alloc_{var_obj}
+          min_abs_denominator: 1.0e-9
         correction_sign:
           pendulum_angle: 1.0
           cart_position: 1.0
@@ -297,8 +364,9 @@ reward_base:
           cart_position: 1.0
         harmful_conflict_weight:
           pendulum_angle: 1.0
-          cart_position: 1.25
-        epsilon: 1.0e-6
+          cart_position: 1.0
+      common_assignment:
+        mode: global_transition
     internal_risk_penalty:
       enabled: true
       normalized_reward_mode: true
@@ -315,27 +383,50 @@ reward_base:
         saturation: mean
       normalization_bounds:
         conflict_effort:
-          pendulum_angle: 1.5
-          cart_position: 2.5
+          pendulum_angle: 4.0
+          cart_position: 4.0
       risk_weights:
-        dynamic_expansive: 0.45
-        memory_integral: 0.12
-        authority: 0.15
-        conflict: 0.28
+        dynamic_expansive: 0.5
+        memory_integral: 0.05
+        authority: 0.2
+        conflict: 0.25
       dynamic_expansive_weights:
-        expansive: 0.60
-        expansive_error: 0.25
-        expansive_residual: 0.15
+        expansive: 0.3
+        expansive_error: 0.6
+        expansive_residual: 0.1
       memory_integral_weights:
-        base: 0.55
-        effort: 0.20
-        saturation: 0.25
+        base: 0.2
+        effort: 0.3
+        saturation: 0.5
       authority_weights:
-        saturation: 0.6
-        effort_expansive: 0.4
+        saturation: 0.45
+        effort_expansive: 0.55
       conflict_weights:
-        base: 0.45
-        expansive: 0.55
+        base: 0.2
+        expansive: 0.8
+      action_feasibility_penalty:
+        enabled: false
+        blocked_decision_cost: 0.04
+        partial_clip_decision_cost: 0.02
+        penalize_maintain: false
+      recoverability_risk:
+        enabled: true
+        reduction: max
+        composition: max
+        signals:
+          pendulum_angle:
+            error: error_norm_pendulum_angle
+            derivative_error: derivative_error_norm_pendulum_angle
+          cart_position:
+            error: error_norm_cart_position
+            derivative_error: derivative_error_norm_cart_position
+        barriers:
+          pendulum_angle:
+            error: {warn: 0.24, limit: 0.82, exponent: 1.2}
+            derivative_error: {warn: 0.12, limit: 0.55, exponent: 1.2}
+          cart_position:
+            error: {warn: 0.6, limit: 0.88, exponent: 1.4}
+            derivative_error: {warn: 0.5, limit: 0.88, exponent: 1.2}
 metrics_setup:
   # --- 1. System measure ----
   system_measure:

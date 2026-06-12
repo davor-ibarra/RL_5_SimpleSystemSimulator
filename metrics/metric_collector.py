@@ -15,9 +15,6 @@ de los componentes upstream, aplana las llaves necesarias, hace append
 sobre las activas según el template, y empaqueta al cierre.
 """
 
-import copy
-
-
 class MetricCollector:
     """
     Recolecta métricas durante la simulación con append incremental.
@@ -36,16 +33,18 @@ class MetricCollector:
         """
         self.result_handler = result_handler
         
-        # Extraer llaves activas del template
+        # Extraer llaves configuradas del template
         episode_template = config_template_output['episode_data']
         
         step_template = episode_template['step_data']
         interval_template = episode_template['interval_data']
         
-        # Llaves activas: todas las que tienen [] como valor (listas vacías)
+        # Llaves configuradas: todas las que tienen [] como valor (listas vacías)
         # Excluir contadores (n_step, n_interval)
-        self.step_keys = self._extract_list_keys(step_template, exclude={'n_step'})
-        self.interval_keys = self._extract_list_keys(interval_template, exclude={'n_interval'})
+        self.config_step_keys = self._extract_list_keys(step_template, exclude={'n_step'})
+        self.config_interval_keys = self._extract_list_keys(interval_template, exclude={'n_interval'})
+        self.step_keys = []
+        self.interval_keys = []
         
         # Template de end_episode_data (se usa como referencia, no como filtro)
         self.end_episode_template = episode_template['end_episode_data']
@@ -56,6 +55,8 @@ class MetricCollector:
         self.interval_data = {}
         self.step_count = 0
         self.interval_count = 0
+        self.step_keys_initialized = False
+        self.interval_keys_initialized = False
     
     def _extract_list_keys(self, template_section, exclude=None):
         """
@@ -89,10 +90,31 @@ class MetricCollector:
             episode_id (int): Identificador del episodio
         """
         self.current_episode_id = episode_id
-        self.step_data = {key: [] for key in self.step_keys}
-        self.interval_data = {key: [] for key in self.interval_keys}
+        self.step_keys = []
+        self.interval_keys = []
+        self.step_data = {}
+        self.interval_data = {}
         self.step_count = 0
         self.interval_count = 0
+        self.step_keys_initialized = False
+        self.interval_keys_initialized = False
+
+    def _initialize_step_keys(self, step_flat_data):
+        self.step_keys = self._existing_configured_keys(self.config_step_keys, step_flat_data)
+        self.step_data = {key: [] for key in self.step_keys}
+        self.step_keys_initialized = True
+
+    def _initialize_interval_keys(self, interval_flat_data):
+        self.interval_keys = self._existing_configured_keys(self.config_interval_keys, interval_flat_data)
+        self.interval_data = {key: [] for key in self.interval_keys}
+        self.interval_keys_initialized = True
+
+    def _existing_configured_keys(self, configured_keys, flat_data):
+        active_keys = []
+        for key in configured_keys:
+            if key in flat_data:
+                active_keys.append(key)
+        return active_keys
     
     def on_step(self, step_flat_data):
         """
@@ -103,7 +125,10 @@ class MetricCollector:
             step_flat_data (dict): Dict plano con llaves canónicas step-level
                 (t_sec, <var>_raw, <var>_norm, cart_force, error_<var_obj>, ...)
         """
-        # Append sobre cada llave activa
+        if not self.step_keys_initialized:
+            self._initialize_step_keys(step_flat_data)
+
+        # Append sobre cada llave activa real
         for key in self.step_keys:
             self.step_data[key].append(step_flat_data[key])
         
@@ -118,6 +143,9 @@ class MetricCollector:
                 ya aplanadas por SimulationManager (interval_id, terminated, 
                 termination_reason, L_e_*, rewards, actions, learn_info, etc.)
         """
+        if not self.interval_keys_initialized:
+            self._initialize_interval_keys(interval_flat_data)
+
         for key in self.interval_keys:
             self.interval_data[key].append(interval_flat_data[key])
         
@@ -154,6 +182,10 @@ class MetricCollector:
         self.interval_data = {}
         self.step_count = 0
         self.interval_count = 0
+        self.step_keys = []
+        self.interval_keys = []
+        self.step_keys_initialized = False
+        self.interval_keys_initialized = False
         self.current_episode_id = None
     
     def finalize_run(self):

@@ -243,9 +243,12 @@ class PIDQLearningAgent:
             dict: actions_dict con formato canónico
         """
         actions_dict = {
+            'actions_applied': False,
             'vars_values': {},
             'vars_decision': {},
-            'vars_delta': {}
+            'vars_delta': {
+                'actions_applied': 0.0
+            }
         }
         
         for agent_name in self.agent_names:
@@ -269,6 +272,11 @@ class PIDQLearningAgent:
             
             actions_dict['vars_decision'][f'action_{agent_name}'] = action_idx
             actions_dict['vars_delta'][f'delta_gain_{agent_name}'] = self.agent_gain_steps[agent_name]
+            actions_dict['vars_delta'][f'delta_gain_requested_{agent_name}'] = 0.0
+            actions_dict['vars_delta'][f'delta_gain_applied_{agent_name}'] = 0.0
+            actions_dict['vars_delta'][f'action_requested_move_{agent_name}'] = 0.0
+            actions_dict['vars_delta'][f'action_blocked_{agent_name}'] = 0.0
+            actions_dict['vars_delta'][f'action_blocked_fraction_{agent_name}'] = 0.0
         
         return actions_dict
     

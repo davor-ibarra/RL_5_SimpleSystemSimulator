@@ -47,18 +47,22 @@ class MetricProcessing:
         
         # Precomputar mapping var_obj → controller_name desde config
         self.var_obj_to_controller = self._build_var_obj_mapping()
+        metric_processing_config = self.config_main['reward_base']['reward_calculation']['metric_processing']
         
         # Extraer config de normalización
         self.normalization_config = self._extract_normalization_config()
-        
+        self.aggregation_config = metric_processing_config['aggregation']
+
         # Extraer config de global_vars (puede no existir)
-        metric_processing_config = self.config_main['reward_base']['reward_calculation']['metric_processing']
-        norm_params = metric_processing_config['normalization']['params']
-        self.global_vars_config = norm_params['global_vars']
+        feature_params = self.aggregation_config['features_params']
+        self.global_vars_config = feature_params['global_vars']
         
         # ---------------------------------------------------------
         # Pre-compilar trabajos estáticos para evitar chequeos continuos
         # ---------------------------------------------------------
+        self.primitive_signal_normalization_jobs = (
+            self._compile_primitive_signal_normalization_jobs()
+        )
         self.feature_jobs = self._compile_feature_jobs()
         self.global_jobs = self._compile_global_jobs()
         
@@ -86,7 +90,7 @@ class MetricProcessing:
         Extrae configuración de normalización desde config.
         
         Returns:
-            dict: Config de normalización con enabled, output_limits, params
+            dict: Config de normalización con enabled, output_limits, signals_params
         """
         reward_calculation = self.config_main['reward_base']['reward_calculation']
         metric_processing_config = reward_calculation['metric_processing']
@@ -95,8 +99,27 @@ class MetricProcessing:
         return {
             'enabled': norm_config['enabled'],
             'output_limits': norm_config['output_limits'],
-            'params': norm_config['params']
+            'signals_params': norm_config['signals_params']
         }
+
+    def _compile_primitive_signal_normalization_jobs(self):
+        """
+        Pre-compila las normalizaciones step-level declaradas en config.
+        """
+        jobs = []
+        if not self.normalization_config['enabled']:
+            return jobs
+
+        for var_obj in self.var_obj_to_controller:
+            var_config = self.normalization_config['signals_params'][var_obj]
+            for destination_key, signal_config in var_config.items():
+                jobs.append((
+                    signal_config['signal'].format(var_obj=var_obj),
+                    destination_key.format(var_obj=var_obj),
+                    signal_config['range']
+                ))
+
+        return jobs
     
     def _compile_feature_jobs(self):
         """
@@ -104,31 +127,24 @@ class MetricProcessing:
         para no re-evaluar los diccionarios de configuración en vivo.
         """
         jobs = {}
-        signal_base_map = {
-            'e': 'error',
-            'edot': 'derivative_error',
-            'I': 'integral_error',
-            'u': 'u_alloc',
-            'delta_u': 'delta_u_alloc'
-        }
-        norm_params = self.normalization_config['params']
+        feature_params = self.aggregation_config['features_params']
         
         for var_obj in self.var_obj_to_controller:
             jobs[var_obj] = []
-            var_norm = norm_params[var_obj]
+            var_norm = feature_params[var_obj]
             
-            for f_key, sig_prefix in signal_base_map.items():
-                sig_key = f'{sig_prefix}_{var_obj}'
-                cfg = var_norm[f_key]
+            for f_key, cfg in var_norm.items():
+                sig_key = cfg['root_var'].format(var_obj=var_obj)
                 
                 method = cfg['method']
                 v_range = cfg['range']
+                dest_agg = cfg['record'].format(var_obj=var_obj, method=method)
                 
                 # Tupla super rápida: (f_key, sig_key, dest_agg, dest_norm, method, v_range)
                 jobs[var_obj].append((
                     f_key, 
                     sig_key, 
-                    f'{sig_key}_{method}', 
+                    dest_agg,
                     f'L_{f_key}_{var_obj}', 
                     method, 
                     v_range
@@ -141,12 +157,13 @@ class MetricProcessing:
         """
         jobs = []
         for var_name, var_config in self.global_vars_config.items():
+            sig_key = var_config['root_var']
             method = var_config['method']
             v_range = var_config['range']
             jobs.append((
-                var_name,
-                f'{var_name}_{method}',
-                f'L_{var_name}',
+                sig_key,
+                f'{sig_key}_{method}',
+                f'L_{sig_key}',
                 method,
                 v_range
             ))
@@ -157,6 +174,23 @@ class MetricProcessing:
         Resetea el procesador al inicio de un episodio.
         """
         self._last_processed_metrics = None
+
+    def normalize_step_record(self, step_record):
+        """
+        Agrega señales primitivas normalizadas al registro step-level.
+        """
+        if not self.normalization_config['enabled']:
+            return step_record
+
+        output_limits = self.normalization_config['output_limits']
+        for source_key, destination_key, value_range in self.primitive_signal_normalization_jobs:
+            step_record[destination_key] = self._normalize_signed_sample(
+                step_record[source_key],
+                value_range,
+                output_limits
+            )
+
+        return step_record
     
     def process_interval_metrics(self, step_records):
         """
@@ -172,6 +206,9 @@ class MetricProcessing:
                 - extra_reward_component: {error_<var_obj>: [serie], ...}
                 - metrics_info: {}
         """
+        for step_record in step_records:
+            self.normalize_step_record(step_record)
+
         # Centralizar transposición a formato columnar O(N)
         columnar_data = {}
         if step_records:
@@ -193,7 +230,7 @@ class MetricProcessing:
             global_metrics = self._process_global_vars(columnar_data)
             reward_component.update(global_metrics)
         
-        # 2. Extra reward component: series crudas extraídas directo de la matriz columnar
+        # 2. Extra reward component: series crudas y primitivas normalizadas step-level
         extra_reward_component = self._extract_raw_series_for_extras(columnar_data)
         
         # 3. Metrics info (placeholder para métricas futuras)
@@ -231,8 +268,8 @@ class MetricProcessing:
         Usa jobs pre-compilados para O(1).
         """
         features = {}
-        normalization_enabled = self.normalization_config['enabled']
-        output_limits = self.normalization_config['output_limits']
+        normalization_enabled = self.aggregation_config['normalizate_agg_too']
+        output_limits = self.aggregation_config['output_limits']
         
         # Extraer operaciones pre-compiladas estáticas
         jobs = self.feature_jobs[var_obj]
@@ -263,8 +300,8 @@ class MetricProcessing:
         Procesa variables globales usando los jobs pre-compilados O(1).
         """
         global_metrics = {}
-        normalization_enabled = self.normalization_config['enabled']
-        output_limits = self.normalization_config['output_limits']
+        normalization_enabled = self.aggregation_config['normalizate_agg_too']
+        output_limits = self.aggregation_config['output_limits']
         
         for (sig_key, dest_agg, dest_norm, method, v_range) in self.global_jobs:
             values = columnar_data[sig_key]
@@ -319,6 +356,9 @@ class MetricProcessing:
             for signal_prefix in signal_prefixes:
                 signal_key = f'{signal_prefix}_{var_obj}'
                 extras[signal_key] = columnar_data[signal_key]
+
+        for _, destination_key, _ in self.primitive_signal_normalization_jobs:
+            extras[destination_key] = columnar_data[destination_key]
             
         # Exponer variables crudas del sistema (e.g. pendulum_velocity_raw)
         # para shaping firmado tipo notebook sin acoplarlas al reward principal.
@@ -404,4 +444,16 @@ class MetricProcessing:
             normalized_01 = 0.0
         
         # Mapear a output_limits
+        return out_min + normalized_01 * (out_max - out_min)
+
+    def _normalize_signed_sample(self, value, value_range, output_limits):
+        """
+        Normaliza una muestra preservando signo y clipeando a los limites de salida.
+        """
+        range_min, range_max = value_range
+        out_min, out_max = output_limits
+        bound = max(abs(range_min), abs(range_max))
+        signed_unit = value / bound
+        signed_unit = min(1.0, max(-1.0, signed_unit))
+        normalized_01 = (signed_unit + 1.0) / 2.0
         return out_min + normalized_01 * (out_max - out_min)

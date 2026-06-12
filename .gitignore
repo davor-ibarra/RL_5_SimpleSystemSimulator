@@ -8,4 +8,5 @@ __pycache__/
 # Results
 results_history_*/
 analysis/
+outputs/
 .DS_Store
