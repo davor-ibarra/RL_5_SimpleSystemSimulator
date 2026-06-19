@@ -9,4 +9,5 @@ __pycache__/
 results_history_*/
 analysis/
 outputs/
+0_bkp/
 .DS_Store

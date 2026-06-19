@@ -103,7 +103,13 @@ def load_history_window(paths, window_episodes=HISTORY_WINDOW_EPISODES):
         if k == "global_interval_reward"
         or k.startswith("reward_")
         or k.startswith("L_")
+        or k.startswith("local_")
         or k.startswith("extra_")
+        or k.startswith("cooperative_")
+        or k.startswith("credit_")
+        or k.startswith("agent_credit_")
+        or k.startswith("regime_")
+        or k.startswith("internal_risk_")
     ]
     
     action_counts = {key: {0: 0, 1: 0, 2: 0} for key in action_keys}
@@ -237,113 +243,107 @@ def build_component_stats(df, prefix, sheet_label):
 
 
 def build_normalization_audit(df, meta):
-    """Hoja: Auditoría de normalización — rangos config vs rangos reales."""
+    """Hoja: Auditoría de normalización - rangos config vs rangos reales."""
     reward_cfg = meta["config_main"]["reward_base"]["reward_calculation"]
-    norm_cfg = reward_cfg["metric_processing"]["normalization"]["params"]
-    
-    # Mapeo: config key → columna summary (mean_squared)
-    metric_map = {
-        "e": "error_{var}_mean_squared",
-        "edot": "derivative_error_{var}_mean_squared",
-        "I": "integral_error_{var}_mean_squared",
-        "u": "u_eff_{var}_mean_squared",
-        "delta_u": "delta_u_eff_{var}_mean_squared",
-    }
-    
+    metric_processing_cfg = reward_cfg["metric_processing"]
     rows = []
-    
-    for var_obj in ["pendulum_angle", "cart_position"]:
-        var_cfg = norm_cfg.get(var_obj, {})
-        for metric_key, col_template in metric_map.items():
-            cfg_entry = var_cfg.get(metric_key, {})
-            cfg_range = cfg_entry.get("range", None)
-            method = cfg_entry.get("method", "mean_squared")
-            
-            col_name = col_template.replace("{var}", var_obj)
-            
-            col_mean = f"{col_name}_mean"
-            
-            if cfg_range:
-                range_min, range_max = cfg_range
-                max_abs = max(abs(range_min), abs(range_max))
-                if method == "mean_squared":
-                    sq_max = max_abs ** 2
-                else:
-                    sq_max = max_abs
-            else:
-                sq_max = None
-            
-            # Buscar columna mean_squared en summary
-            if col_name in df.columns:
-                actual_col = col_name
-            elif col_mean in df.columns:
-                actual_col = col_mean
-            else:
-                actual_col = None
-            
-            if actual_col and actual_col in df.columns:
-                s = df[actual_col].dropna()
-                actual_min = round(s.min(), 6)
-                actual_max = round(s.max(), 6)
-                actual_mean = round(s.mean(), 6)
-                coverage = round(actual_max / sq_max * 100, 1) if sq_max and sq_max > 0 else None
-            else:
-                actual_min = actual_max = actual_mean = coverage = "N/A"
-            
-            # L_ values
-            l_col = f"L_{metric_key}_{var_obj}_mean"
-            if l_col in df.columns:
-                l_s = df[l_col].dropna()
-                l_min = round(l_s.min(), 6)
-                l_max = round(l_s.max(), 6)
-                l_mean = round(l_s.mean(), 6)
-                l_std = round(l_s.std(), 6)
-            else:
-                l_min = l_max = l_mean = l_std = "N/A"
-            
-            rows.append({
-                "Variable": var_obj,
-                "Métrica": metric_key,
-                "Método": method,
-                "Rango Config": str(cfg_range) if cfg_range else "N/A",
-                "max_abs²": round(sq_max, 6) if sq_max else "N/A",
-                "Actual Min": actual_min,
-                "Actual Max": actual_max,
-                "Actual Mean": actual_mean,
-                "Cobertura %": coverage if coverage else "N/A",
-                "L_* Min": l_min,
-                "L_* Max": l_max,
-                "L_* Mean": l_mean,
-                "L_* Std": l_std,
-            })
-    
-    # Global vars
-    global_cfg = norm_cfg.get("global_vars", {})
-    for metric_key, cfg_entry in global_cfg.items():
-        cfg_range = cfg_entry.get("range", None)
-        method = cfg_entry.get("method", "mean_squared")
-        if cfg_range:
-            max_abs = max(abs(cfg_range[0]), abs(cfg_range[1]))
-            sq_max = max_abs ** 2 if method == "mean_squared" else max_abs
-        else:
-            sq_max = None
-        
-        rows.append({
-            "Variable": "global",
-            "Métrica": metric_key,
-            "Método": method,
-            "Rango Config": str(cfg_range) if cfg_range else "N/A",
-            "max_abs²": round(sq_max, 6) if sq_max else "N/A",
-            "Actual Min": "—",
-            "Actual Max": "—",
-            "Actual Mean": "—",
-            "Cobertura %": "—",
-            "L_* Min": "—",
-            "L_* Max": "—",
-            "L_* Mean": "—",
-            "L_* Std": "—",
-        })
-    
+
+    if "normalization" in metric_processing_cfg:
+        norm_cfg = metric_processing_cfg["normalization"]
+        if "signals_params" in norm_cfg:
+            for variable_name, signals_cfg in sorted(norm_cfg["signals_params"].items()):
+                for normalized_signal, signal_cfg in sorted(signals_cfg.items()):
+                    cfg_range = signal_cfg["range"]
+                    source_signal = signal_cfg["signal"]
+                    max_abs = max(abs(float(cfg_range[0])), abs(float(cfg_range[1])))
+                    actual_col = None
+                    for candidate in [
+                        f"{normalized_signal}_mean",
+                        normalized_signal,
+                        f"{source_signal}_mean",
+                        source_signal,
+                    ]:
+                        if candidate in df.columns:
+                            actual_col = candidate
+                            break
+                    if actual_col:
+                        s = df[actual_col].dropna()
+                        actual_min = round(float(s.min()), 6)
+                        actual_max = round(float(s.max()), 6)
+                        actual_mean = round(float(s.mean()), 6)
+                        observed_abs = max(abs(float(s.min())), abs(float(s.max())))
+                        coverage = round(observed_abs / max_abs * 100.0, 1) if max_abs > 0 else "N/A"
+                    else:
+                        actual_min = actual_max = actual_mean = coverage = "N/A"
+                    rows.append({
+                        "Familia": "normalization.signals_params",
+                        "Variable": variable_name,
+                        "Métrica": normalized_signal,
+                        "Fuente": source_signal,
+                        "Método": "linear_range",
+                        "Rango Config": str(cfg_range),
+                        "max_abs": round(max_abs, 6),
+                        "Actual Col": actual_col if actual_col else "N/A",
+                        "Actual Min": actual_min,
+                        "Actual Max": actual_max,
+                        "Actual Mean": actual_mean,
+                        "Cobertura %": coverage,
+                    })
+
+    if "aggregation" in metric_processing_cfg:
+        aggregation_cfg = metric_processing_cfg["aggregation"]
+        if "features_params" in aggregation_cfg:
+            for variable_name, features_cfg in sorted(aggregation_cfg["features_params"].items()):
+                for feature_name, feature_cfg in sorted(features_cfg.items()):
+                    method = feature_cfg["method"]
+                    cfg_range = feature_cfg["range"]
+                    if "record" in feature_cfg:
+                        record_name = feature_cfg["record"].format(method=method)
+                    else:
+                        record_name = f"{feature_cfg['root_var']}_{method}"
+                    max_abs = max(abs(float(cfg_range[0])), abs(float(cfg_range[1])))
+                    scaled_max = max_abs ** 2 if method in ["mean_squared", "rms"] else max_abs
+                    actual_col = None
+                    for candidate in [f"{record_name}_mean", record_name]:
+                        if candidate in df.columns:
+                            actual_col = candidate
+                            break
+                    if actual_col:
+                        s = df[actual_col].dropna()
+                        actual_min = round(float(s.min()), 6)
+                        actual_max = round(float(s.max()), 6)
+                        actual_mean = round(float(s.mean()), 6)
+                        observed_max = float(s.max())
+                        coverage = round(observed_max / scaled_max * 100.0, 1) if scaled_max > 0 else "N/A"
+                    else:
+                        actual_min = actual_max = actual_mean = coverage = "N/A"
+                    if variable_name == "global_vars":
+                        l_col = f"L_{feature_name}_mean"
+                    else:
+                        l_col = f"L_{feature_name}_{variable_name}_mean"
+                    if l_col in df.columns:
+                        l_s = df[l_col].dropna()
+                        l_mean = round(float(l_s.mean()), 6)
+                        l_std = round(float(l_s.std()), 6)
+                    else:
+                        l_mean = l_std = "N/A"
+                    rows.append({
+                        "Familia": "aggregation.features_params",
+                        "Variable": variable_name,
+                        "Métrica": feature_name,
+                        "Fuente": feature_cfg["root_var"],
+                        "Método": method,
+                        "Rango Config": str(cfg_range),
+                        "max_abs": round(scaled_max, 6),
+                        "Actual Col": actual_col if actual_col else "N/A",
+                        "Actual Min": actual_min,
+                        "Actual Max": actual_max,
+                        "Actual Mean": actual_mean,
+                        "Cobertura %": coverage,
+                        "L_* Mean": l_mean,
+                        "L_* Std": l_std,
+                    })
+
     return pd.DataFrame(rows)
 
 
@@ -461,104 +461,92 @@ def build_final_gains(df, tr_col):
 
 
 def build_reward_scale_analysis(df, meta):
-    """Hoja: Análisis de escala de recompensas (contribución ponderada)."""
+    """Hoja: Analisis de escala de recompensas y familias persistidas."""
     reward_cfg = meta["config_main"]["reward_base"]["reward_calculation"]
-    lagrange_cfg = reward_cfg["principal_reward"]
-    method = lagrange_cfg.get("method", "lineal_combination")
-    
+    reward_config = meta["config_main"]["reward_base"]["reward_config"]
     rows = []
-    
-    # Pesos Lagrange
-    if method == "lineal_combination":
-        features = lagrange_cfg.get("lineal_combination_params", {}).get("features", {})
-    else:
-        features = lagrange_cfg.get("weighted_exponential_params", {}).get("features", {})
-    
-    rows.append({"Aspecto": "--- Pesos Lagrange ---", "Valor": "", "Detalle": ""})
-    total_weight = 0
-    for feat, cfg in features.items():
-        w = cfg.get("weight", 0)
-        total_weight += w
-        rows.append({"Aspecto": f"  {feat}", "Valor": w, "Detalle": f"weight={w}"})
-    rows.append({"Aspecto": "  Σ weights", "Valor": total_weight, "Detalle": "Debe ser 1.0"})
-    
-    rows.append({"Aspecto": "", "Valor": "", "Detalle": ""})
-    rows.append({"Aspecto": "--- Contribución media ponderada ---", "Valor": "", "Detalle": ""})
-    
-    # Calcular contribución real
-    lagrange_cols = sorted([c for c in df.columns if c.startswith("L_") and c.endswith("_mean")])
-    for feat, cfg in features.items():
-        w = cfg.get("weight", 0)
-        matching = [c for c in lagrange_cols if c.startswith(feat)]
-        if matching:
-            total_L = sum(df[c].mean() for c in matching)
-            weighted = w * total_L
-            rows.append({
-                "Aspecto": f"  {feat} (w={w})",
-                "Valor": round(weighted, 6),
-                "Detalle": f"Σ L_mean={round(total_L, 6)}, weighted={round(weighted, 6)}"
-            })
-    
-    # Extra rewards
-    rows.append({"Aspecto": "", "Valor": "", "Detalle": ""})
-    rows.append({"Aspecto": "--- Extra Rewards Config ---", "Valor": "", "Detalle": ""})
-    
-    extra_cfg = reward_cfg.get("extra_rewards", {})
-    
-    # Bandwidth bonus
-    bb = extra_cfg.get("bonus_approach", {}).get("bandwidth_bonus", {})
-    rows.append({"Aspecto": "  bandwidth_bonus enabled", "Valor": bb.get("enabled", False), "Detalle": ""})
-    rows.append({"Aspecto": "  per_step_band_bonus", "Valor": bb.get("per_step_band_bonus", "N/A"), "Detalle": ""})
-    rows.append({"Aspecto": "  max_total_band_bonus", "Valor": bb.get("max_total_band_bonus", "N/A"), "Detalle": ""})
-    for var, rng in bb.get("ranges", {}).items():
-        rows.append({"Aspecto": f"  band range: {var}", "Valor": str(rng), "Detalle": ""})
-    
-    # Dynamic penalty
-    dp = extra_cfg.get("conditional_approach", {}).get("dynamic_penalty", {})
-    rows.append({"Aspecto": "  dynamic_penalty enabled", "Valor": dp.get("enabled", False), "Detalle": ""})
-    for var, cfg_dp in dp.get("dynamic_penalty_params", {}).items():
-        cond = cfg_dp.get("condition", {})
-        cond_type = cond.get("type")
-        cond_gain = cond.get("strength", cond.get("scaled"))
-        cond_setpoint = cond.get("setpoint", cond.get("x_sp"))
-        gain_label = "strength" if cond_type == "tanh" else "scaled"
+
+    rows.append({"Aspecto": "reward_approach", "Valor": reward_config["reward_approach"], "Detalle": ""})
+    if "reward_composition" in reward_config:
+        for name, value in sorted(reward_config["reward_composition"].items()):
+            rows.append({"Aspecto": f"reward_composition.{name}", "Valor": value, "Detalle": ""})
+
+    if "local_control_quality" in reward_cfg:
+        local_cfg = reward_cfg["local_control_quality"]
+        rows.append({"Aspecto": "local_control_quality.enabled", "Valor": local_cfg["enabled"], "Detalle": ""})
+        for cost_name, weights_by_variable in sorted(local_cfg["cost_weights"].items()):
+            for variable_name, weight in sorted(weights_by_variable.items()):
+                rows.append({
+                    "Aspecto": f"local_control_quality.cost_weights.{cost_name}.{variable_name}",
+                    "Valor": weight,
+                    "Detalle": "",
+                })
+
+    if "cooperative_transition_evaluator" in reward_cfg:
+        global_potential = reward_cfg["cooperative_transition_evaluator"]["global_potential"]
         rows.append({
-            "Aspecto": f"  dp: {var}",
-            "Valor": f"w={cfg_dp.get('weight')}, {gain_label}={cond_gain}, sp={cond_setpoint}",
-            "Detalle": f"type={cond_type}, feature={cond.get('feature')}"
+            "Aspecto": "cooperative_transition_evaluator.global_potential.aggregation_mode",
+            "Valor": global_potential["aggregation_mode"],
+            "Detalle": "",
         })
-    
-    # Escala comparativa
-    rows.append({"Aspecto": "", "Valor": "", "Detalle": ""})
-    rows.append({"Aspecto": "--- Escala comparativa (abs_mean) ---", "Valor": "", "Detalle": ""})
-    
+        if global_potential["aggregation_mode"] == "additive_sync_blend":
+            sync_quality = global_potential["sync_quality"]
+            rows.append({
+                "Aspecto": "cooperative_transition_evaluator.global_potential.sync_quality.weight",
+                "Valor": sync_quality["weight"],
+                "Detalle": f"enabled={sync_quality['enabled']}, epsilon={sync_quality['epsilon']}",
+            })
+
     if "total_reward" in df.columns:
         tr_mean = abs(df["total_reward"].mean())
-        rows.append({"Aspecto": "  |total_reward| mean", "Valor": round(tr_mean, 4), "Detalle": "Referencia"})
-        
-        extra_cols = sorted([c for c in df.columns if c.startswith("extra_") and c.endswith("_mean")])
-        for col in extra_cols:
+        rows.append({"Aspecto": "|total_reward| mean", "Valor": round(tr_mean, 4), "Detalle": "Referencia"})
+
+        component_prefixes = [
+            "reward_",
+            "local_",
+            "cooperative_",
+            "credit_",
+            "agent_credit_",
+            "internal_risk_",
+            "regime_",
+            "extra_",
+            "L_",
+        ]
+        component_cols = sorted([
+            col for col in df.columns
+            if col.endswith("_mean") and any(col.startswith(prefix) for prefix in component_prefixes)
+        ])
+        for col in component_cols:
             s = df[col].dropna()
-            abs_mean = s.abs().mean()
-            if abs_mean > 0:
-                ratio = abs_mean / tr_mean * 100
-                rows.append({
-                    "Aspecto": f"  {col}",
-                    "Valor": round(abs_mean, 6),
-                    "Detalle": f"{round(ratio, 2)}% del total_reward"
-                })
+            if s.empty:
+                continue
+            abs_mean = float(s.abs().mean())
+            ratio = abs_mean / tr_mean * 100.0 if tr_mean > 0 else np.nan
+            rows.append({
+                "Aspecto": col,
+                "Valor": round(abs_mean, 6),
+                "Detalle": f"{round(ratio, 2)}% del |total_reward| mean" if tr_mean > 0 else "total_reward mean cero",
+            })
     
     return pd.DataFrame(rows)
 
 
 def build_state_vars(df):
     """Hoja: Variables de estado (raw y normalized)."""
-    state_vars = ["pendulum_angle", "pendulum_velocity", "cart_position", "cart_velocity"]
+    stat_suffixes = ["_mean", "_std", "_min", "_p25", "_p50", "_p75", "_max"]
+    state_vars = []
+    for col in df.columns:
+        for suffix in ["_raw", "_norm"]:
+            for stat in stat_suffixes:
+                if col.endswith(f"{suffix}{stat}"):
+                    variable_name = col[: -len(f"{suffix}{stat}")]
+                    if variable_name not in state_vars:
+                        state_vars.append(variable_name)
     rows = []
     
     for var in state_vars:
         for suffix in ["_raw", "_norm"]:
-            for stat in ["_mean", "_std", "_min", "_p25", "_p50", "_p75", "_max"]:
+            for stat in stat_suffixes:
                 col = f"{var}{suffix}{stat}"
                 if col in df.columns:
                     s = df[col].dropna()
@@ -680,7 +668,13 @@ def build_last_episode_snapshot(history_window):
         if k == "global_interval_reward"
         or k.startswith("reward_")
         or k.startswith("L_")
+        or k.startswith("local_")
         or k.startswith("extra_")
+        or k.startswith("cooperative_")
+        or k.startswith("credit_")
+        or k.startswith("agent_credit_")
+        or k.startswith("regime_")
+        or k.startswith("internal_risk_")
     ]
     for signal_key in signal_keys:
         signal_arr = np.array(interval_data[signal_key], dtype=float)
@@ -689,46 +683,111 @@ def build_last_episode_snapshot(history_window):
     return pd.DataFrame(rows)
 
 
+SIGNAL_SUMMARY_COLUMNS = ["Signal", "Min", "Max", "Mean", "Std", "Median", "p5", "p95"]
+
+
+def interval_signal_mean(interval_signal_values, signal_name):
+    """Media estricta de una señal interval-level ya seleccionada."""
+    values = interval_signal_values[signal_name]
+    arr = np.array(values, dtype=float)
+    return float(np.mean(arr))
+
+
+def summarize_interval_signal_prefixes(interval_signal_values, prefixes):
+    """Resume señales interval-level por prefijos definidos por el análisis."""
+    rows = []
+    for signal_name in sorted(interval_signal_values):
+        if not any(signal_name.startswith(prefix) for prefix in prefixes):
+            continue
+        values = interval_signal_values[signal_name]
+        if not values:
+            continue
+        arr = np.array(values, dtype=float)
+        rows.append({
+            "Signal": signal_name,
+            "Min": round(float(np.min(arr)), 6),
+            "Max": round(float(np.max(arr)), 6),
+            "Mean": round(float(np.mean(arr)), 6),
+            "Std": round(float(np.std(arr)), 6),
+            "Median": round(float(np.median(arr)), 6),
+            "p5": round(float(np.percentile(arr, 5)), 6),
+            "p95": round(float(np.percentile(arr, 95)), 6),
+        })
+    return pd.DataFrame(rows, columns=SIGNAL_SUMMARY_COLUMNS)
+
+
+def collect_declared_reward_variables(reward_cfg):
+    """Variables de control declaradas por los componentes configurados."""
+    variables = []
+    if "local_control_quality" in reward_cfg:
+        for weights_by_variable in reward_cfg["local_control_quality"]["cost_weights"].values():
+            for variable_name in weights_by_variable:
+                if variable_name not in variables:
+                    variables.append(variable_name)
+    if "cooperative_transition_evaluator" in reward_cfg:
+        variable_weights = reward_cfg["cooperative_transition_evaluator"]["global_potential"]["variable_weights"]
+        for variable_name in variable_weights:
+            if variable_name not in variables:
+                variables.append(variable_name)
+    if "credit_allocator" in reward_cfg:
+        controller_assignment = reward_cfg["credit_allocator"]["controller_assignment"]
+        if "correction_sign" in controller_assignment:
+            for variable_name in controller_assignment["correction_sign"]:
+                if variable_name not in variables:
+                    variables.append(variable_name)
+    return variables
+
+
+def signal_belongs_to_variable(signal_name, variable_name):
+    return signal_name.endswith(f"_{variable_name}")
+
+
 def build_credit_assignment_audit(history_window):
-    """Hoja: Auditoría de crédito usando rewards interval-level reales."""
+    """Hoja: Auditoria de credito usando señales interval-level reales."""
     interval_signal_values = history_window["interval_signal_values"]
     
     global_reward_mean = float(np.mean(np.array(interval_signal_values["global_interval_reward"], dtype=float)))
-    
-    pendulum_reward_keys = [
-        "reward_kp_pendulum_angle",
-        "reward_ki_pendulum_angle",
-        "reward_kd_pendulum_angle",
-    ]
-    cart_reward_keys = [
-        "reward_kp_cart_position",
-        "reward_ki_cart_position",
-        "reward_kd_cart_position",
-    ]
-    
-    pendulum_agent_reward_mean = float(np.mean(np.concatenate([
-        np.array(interval_signal_values[key], dtype=float) for key in pendulum_reward_keys
-    ])))
-    cart_agent_reward_mean = float(np.mean(np.concatenate([
-        np.array(interval_signal_values[key], dtype=float) for key in cart_reward_keys
-    ])))
-    
-    extra_bonus_pendulum_mean = float(np.mean(np.array(interval_signal_values["extra_bonus_band_pendulum_angle"], dtype=float)))
-    extra_bonus_cart_mean = float(np.mean(np.array(interval_signal_values["extra_bonus_band_cart_position"], dtype=float)))
-    extra_penalty_pendulum_mean = float(np.mean(np.array(interval_signal_values["extra_conditional_dynamic_penalty_pendulum_angle"], dtype=float)))
-    extra_penalty_cart_mean = float(np.mean(np.array(interval_signal_values["extra_conditional_dynamic_penalty_cart_position"], dtype=float)))
-    
     rows = [
-        {"Chequeo": "global_interval_reward_mean", "Valor": round(global_reward_mean, 6), "Lectura": "Reward global medio por decision", "Accion sugerida": ""},
-        {"Chequeo": "pendulum_agent_reward_mean", "Valor": round(pendulum_agent_reward_mean, 6), "Lectura": "Reward medio recibido por agentes del lazo pendulo", "Accion sugerida": ""},
-        {"Chequeo": "cart_agent_reward_mean", "Valor": round(cart_agent_reward_mean, 6), "Lectura": "Reward medio recibido por agentes del lazo carro", "Accion sugerida": ""},
-        {"Chequeo": "extra_bonus_band_pendulum_mean", "Valor": round(extra_bonus_pendulum_mean, 6), "Lectura": "Bonus medio por decision del pendulo", "Accion sugerida": ""},
-        {"Chequeo": "extra_bonus_band_cart_mean", "Valor": round(extra_bonus_cart_mean, 6), "Lectura": "Bonus medio por decision del carro", "Accion sugerida": ""},
-        {"Chequeo": "extra_dynamic_penalty_pendulum_mean", "Valor": round(extra_penalty_pendulum_mean, 6), "Lectura": "Penalidad dinamica media del pendulo", "Accion sugerida": ""},
-        {"Chequeo": "extra_dynamic_penalty_cart_mean", "Valor": round(extra_penalty_cart_mean, 6), "Lectura": "Penalidad dinamica media del carro", "Accion sugerida": ""},
-        {"Chequeo": "global_minus_pendulum_reward", "Valor": round(global_reward_mean - pendulum_agent_reward_mean, 6), "Lectura": "Gap entre reward global y reward del lazo pendulo", "Accion sugerida": "Si el gap es grande, revisar credit assignment"},
-        {"Chequeo": "global_minus_cart_reward", "Valor": round(global_reward_mean - cart_agent_reward_mean, 6), "Lectura": "Gap entre reward global y reward del lazo carro", "Accion sugerida": "Si el gap es grande, revisar credit assignment"},
+        {
+            "Chequeo": "global_interval_reward_mean",
+            "Valor": round(global_reward_mean, 6),
+            "Lectura": "Reward global medio por decision",
+            "Accion sugerida": "",
+        },
     ]
+
+    reward_signed_keys = [
+        signal_name for signal_name in interval_signal_values
+        if signal_name.startswith("reward_") and "_signed_" in signal_name
+    ]
+    for signal_name in sorted(reward_signed_keys):
+        signal_mean = interval_signal_mean(interval_signal_values, signal_name)
+        rows.append({
+            "Chequeo": f"{signal_name}_mean",
+            "Valor": round(signal_mean, 6),
+            "Lectura": "Componente signed de reward persistido por el sistema",
+            "Accion sugerida": "",
+        })
+        rows.append({
+            "Chequeo": f"global_minus_{signal_name}",
+            "Valor": round(global_reward_mean - signal_mean, 6),
+            "Lectura": "Gap entre reward global y componente signed",
+            "Accion sugerida": "Si el gap domina, revisar composicion y asignacion de credito",
+        })
+
+    for signal_name in sorted(interval_signal_values):
+        if not (
+            signal_name.startswith("cooperative_global_")
+            or signal_name.startswith("credit_")
+            or signal_name.startswith("agent_credit_")
+        ):
+            continue
+        rows.append({
+            "Chequeo": f"{signal_name}_mean",
+            "Valor": round(interval_signal_mean(interval_signal_values, signal_name), 6),
+            "Lectura": "Señal cooperativa/crediticia media en ventana detallada",
+            "Accion sugerida": "",
+        })
     
     return pd.DataFrame(rows)
 
@@ -752,16 +811,17 @@ def build_diagnostic_summary(df, history_window, tr_col):
         maintain_ratios.append((action_key, maintain_ratio, swing_bias))
     
     maintain_ratios.sort(key=lambda x: x[1])
-    lowest_maintain_action, lowest_maintain_value, lowest_maintain_bias = maintain_ratios[0]
-    mean_maintain = float(np.mean([item[1] for item in maintain_ratios]))
+    if maintain_ratios:
+        lowest_maintain_action, lowest_maintain_value, lowest_maintain_bias = maintain_ratios[0]
+        mean_maintain = float(np.mean([item[1] for item in maintain_ratios]))
+    else:
+        lowest_maintain_action = ""
+        lowest_maintain_value = np.nan
+        lowest_maintain_bias = np.nan
+        mean_maintain = np.nan
     
     sat_ratio_mean = float(episode_df["sat_ratio"].mean())
     sat_ratio_p95 = float(episode_df["sat_ratio"].quantile(0.95))
-    
-    extra_bonus_pendulum_mean = float(np.mean(np.array(interval_signal_values["extra_bonus_band_pendulum_angle"], dtype=float)))
-    extra_bonus_cart_mean = float(np.mean(np.array(interval_signal_values["extra_bonus_band_cart_position"], dtype=float)))
-    extra_penalty_pendulum_mean = float(np.mean(np.array(interval_signal_values["extra_conditional_dynamic_penalty_pendulum_angle"], dtype=float)))
-    extra_penalty_cart_mean = float(np.mean(np.array(interval_signal_values["extra_conditional_dynamic_penalty_cart_position"], dtype=float)))
     
     rows.append({
         "Chequeo": "stabilization_success_last500",
@@ -787,18 +847,58 @@ def build_diagnostic_summary(df, history_window, tr_col):
         "Lectura": f"p95 = {round(sat_ratio_p95, 6)}",
         "Accion sugerida": "Si es moderado, no tratar la saturacion como cuello principal"
     })
-    rows.append({
-        "Chequeo": "bonus_balance_pendulum_vs_cart",
-        "Valor": round(extra_bonus_pendulum_mean - extra_bonus_cart_mean, 6),
-        "Lectura": f"pendulum={round(extra_bonus_pendulum_mean, 6)}, cart={round(extra_bonus_cart_mean, 6)}",
-        "Accion sugerida": "Si el pendulo recibe mucho menos bonus, rebalancear bandas"
-    })
-    rows.append({
-        "Chequeo": "dynamic_penalty_balance_pendulum_vs_cart",
-        "Valor": round(extra_penalty_pendulum_mean - extra_penalty_cart_mean, 6),
-        "Lectura": f"pendulum={round(extra_penalty_pendulum_mean, 6)}, cart={round(extra_penalty_cart_mean, 6)}",
-        "Accion sugerida": "Si el pendulo paga mucho mas, revisar weights y strength/scaled"
-    })
+    cooperative_global_quality = "cooperative_global_quality_signed"
+    cooperative_linear_quality = "cooperative_global_linear_quality_signed"
+    cooperative_sync_quality = "cooperative_global_sync_quality_signed"
+    cooperative_sync_weight = "cooperative_global_sync_weight"
+
+    if cooperative_global_quality in interval_signal_values:
+        rows.append({
+            "Chequeo": "cooperative_global_quality_signed_mean",
+            "Valor": round(interval_signal_mean(interval_signal_values, cooperative_global_quality), 6),
+            "Lectura": "Calidad cooperativa global firmada media",
+            "Accion sugerida": "Si cae mientras sube la reward, revisar composicion o credito",
+        })
+    if cooperative_linear_quality in interval_signal_values and cooperative_sync_quality in interval_signal_values:
+        linear_arr = np.array(interval_signal_values[cooperative_linear_quality], dtype=float)
+        sync_arr = np.array(interval_signal_values[cooperative_sync_quality], dtype=float)
+        gap_arr = linear_arr - sync_arr
+        rows.append({
+            "Chequeo": "cooperative_linear_minus_sync_quality_signed_mean",
+            "Valor": round(float(np.mean(gap_arr)), 6),
+            "Lectura": "Gap medio entre calidad lineal y calidad de sincronizacion",
+            "Accion sugerida": "Si aumenta, auditar asincronia entre variables y beta_coop",
+        })
+        rows.append({
+            "Chequeo": "cooperative_sync_gap_abs_mean",
+            "Valor": round(float(np.mean(np.abs(gap_arr))), 6),
+            "Lectura": "Desalineacion absoluta media entre calidad lineal y sync",
+            "Accion sugerida": "Si domina la ventana, revisar peso sync_quality y credit_allocator",
+        })
+    if cooperative_sync_weight in interval_signal_values:
+        rows.append({
+            "Chequeo": "cooperative_global_sync_weight_mean",
+            "Valor": round(interval_signal_mean(interval_signal_values, cooperative_sync_weight), 6),
+            "Lectura": "Peso de sincronizacion aplicado por el evaluador cooperativo",
+            "Accion sugerida": "",
+        })
+
+    credit_fraction_signals = [
+        signal_name for signal_name in interval_signal_values
+        if signal_name.startswith("credit_") and signal_name.endswith("_fraction")
+    ]
+    if not credit_fraction_signals:
+        credit_fraction_signals = [
+            signal_name for signal_name in interval_signal_values
+            if signal_name.startswith("credit_") and "_fraction_" in signal_name
+        ]
+    for signal_name in sorted(credit_fraction_signals):
+        rows.append({
+            "Chequeo": f"{signal_name}_mean",
+            "Valor": round(interval_signal_mean(interval_signal_values, signal_name), 6),
+            "Lectura": "Fraccion de credito persistida por el allocator",
+            "Accion sugerida": "",
+        })
     
     return pd.DataFrame(rows)
 
@@ -806,175 +906,147 @@ def build_diagnostic_summary(df, history_window, tr_col):
 
 
 def build_decision_summary_tables(df, meta, history_window, tr_col):
-    """Construye tablas resumen neutrales para la primera hoja."""
+    """Construye tablas resumen desde la configuracion efectiva y señales persistidas."""
     config_main = meta["config_main"]
     sim_cfg = config_main["simulation"]
     agent_base_cfg = config_main["agent_base"]
     actions_cfg = agent_base_cfg["agent_config"]["actions"]["actions_values"]
-    reward_cfg = config_main["reward_base"]["reward_calculation"]
-    extra_reward_cfg = reward_cfg["extra_rewards"]
-    bandwidth_cfg = extra_reward_cfg["bonus_approach"]["bandwidth_bonus"]
-    dynamic_cfg = extra_reward_cfg["conditional_approach"]["dynamic_penalty"]["dynamic_penalty_params"]
-    pendulum_penalty_cfg = dynamic_cfg["control_action_pendulum_angle"]
-    cart_penalty_cfg = dynamic_cfg["control_action_cart_position"]
-    pendulum_cond = pendulum_penalty_cfg["condition"]
-    cart_cond = cart_penalty_cfg["condition"]
-    lagrange_features = reward_cfg["principal_reward"]["lineal_combination_params"]["features"]
+    reward_base_cfg = config_main["reward_base"]
+    reward_config = reward_base_cfg["reward_config"]
+    reward_cfg = reward_base_cfg["reward_calculation"]
     boundary_cfg = config_main["dynamic_system"]["termination_conditions"]["boundary_constraint"]
-    
+
+    declared_variables = collect_declared_reward_variables(reward_cfg)
+    if not declared_variables:
+        raise KeyError("No se encontraron variables declaradas en reward_calculation")
+
     selected_episodes = history_window["selected_episodes"]
     interval_signal_values = history_window["interval_signal_values"]
     episode_df = pd.DataFrame(history_window["episode_rows"])
     action_df = build_action_usage(history_window).copy()
-    
+
     stabilization_count = 0
     if tr_col:
         stabilization_count = int(np.sum(df.tail(HISTORY_WINDOW_EPISODES)[tr_col] == "stabilization_success"))
-    
-    pendulum_reward_keys = [
-        "reward_kp_pendulum_angle",
-        "reward_ki_pendulum_angle",
-        "reward_kd_pendulum_angle",
-    ]
-    cart_reward_keys = [
-        "reward_kp_cart_position",
-        "reward_ki_cart_position",
-        "reward_kd_cart_position",
-    ]
-    
-    pendulum_agent_reward_mean = float(np.mean(np.concatenate([
-        np.array(interval_signal_values[key], dtype=float) for key in pendulum_reward_keys
-    ])))
-    cart_agent_reward_mean = float(np.mean(np.concatenate([
-        np.array(interval_signal_values[key], dtype=float) for key in cart_reward_keys
-    ])))
-    
-    pendulum_bonus_mean = 0.0
-    cart_bonus_mean = 0.0
-    pendulum_penalty_mean = 0.0
-    cart_penalty_mean = 0.0
-    pendulum_extra_mean = 0.0
-    cart_extra_mean = 0.0
-    
-    for signal_name in interval_signal_values:
-        signal_mean = float(np.mean(np.array(interval_signal_values[signal_name], dtype=float)))
-        if signal_name.startswith("extra_bonus_band_"):
-            if signal_name.endswith("pendulum_angle"):
-                pendulum_bonus_mean += signal_mean
-            if signal_name.endswith("cart_position"):
-                cart_bonus_mean += signal_mean
-        if signal_name.startswith("extra_conditional_dynamic_penalty_"):
-            if signal_name.endswith("pendulum_angle"):
-                pendulum_penalty_mean += signal_mean
-            if signal_name.endswith("cart_position"):
-                cart_penalty_mean += signal_mean
-        if signal_name.startswith("extra_"):
-            if signal_name.endswith("pendulum_angle"):
-                pendulum_extra_mean += signal_mean
-            if signal_name.endswith("cart_position"):
-                cart_extra_mean += signal_mean
-    
-    loop_cost_rows = []
-    pendulum_principal_mean = 0.0
-    cart_principal_mean = 0.0
-    for loop_name in ["pendulum_angle", "cart_position"]:
-        loop_row = {"loop": loop_name}
-        principal_reward_mean = 0.0
-        for feature_name in lagrange_features:
-            signal_name = f"{feature_name}_{loop_name}"
-            if signal_name in interval_signal_values:
-                signal_mean = float(np.mean(np.array(interval_signal_values[signal_name], dtype=float)))
-                loop_row[f"{feature_name}_mean"] = round(signal_mean, 6)
-                principal_reward_mean -= lagrange_features[feature_name]["weight"] * signal_mean
-        loop_row["principal_reward_mean"] = round(principal_reward_mean, 6)
-        loop_cost_rows.append(loop_row)
-        if loop_name == "pendulum_angle":
-            pendulum_principal_mean = principal_reward_mean
-        if loop_name == "cart_position":
-            cart_principal_mean = principal_reward_mean
-    
-    angle_limit = abs(boundary_cfg["pendulum_angle"][1])
-    cart_limit = abs(boundary_cfg["cart_position"][1])
-    angle_only_fail = 0
-    cart_only_fail = 0
-    both_fail = 0
-    
-    pendulum_angle_abs_means = []
-    pendulum_velocity_abs_means = []
-    cart_position_abs_means = []
-    cart_velocity_abs_means = []
-    control_action_pendulum_abs_means = []
-    control_action_cart_abs_means = []
-    pendulum_band_bonus_episode = []
-    cart_band_bonus_episode = []
-    
-    for episode in selected_episodes:
-        step_data = episode["step_data"]
-        end_episode = episode["end_episode_data"]
-        
-        pendulum_angle_abs_means.append(float(np.mean(np.abs(np.array(step_data["pendulum_angle_raw"], dtype=float)))))
-        pendulum_velocity_abs_means.append(float(np.mean(np.abs(np.array(step_data["pendulum_velocity_raw"], dtype=float)))))
-        cart_position_abs_means.append(float(np.mean(np.abs(np.array(step_data["cart_position_raw"], dtype=float)))))
-        cart_velocity_abs_means.append(float(np.mean(np.abs(np.array(step_data["cart_velocity_raw"], dtype=float)))))
-        control_action_pendulum_abs_means.append(float(np.mean(np.abs(np.array(step_data["control_action_pendulum_angle"], dtype=float)))))
-        control_action_cart_abs_means.append(float(np.mean(np.abs(np.array(step_data["control_action_cart_position"], dtype=float)))))
-        
-        if "accumulated_band_bonus_pendulum_angle" in end_episode:
-            pendulum_band_bonus_episode.append(float(end_episode["accumulated_band_bonus_pendulum_angle"]))
-        if "accumulated_band_bonus_cart_position" in end_episode:
-            cart_band_bonus_episode.append(float(end_episode["accumulated_band_bonus_cart_position"]))
-        
-        final_abs_angle = abs(float(step_data["pendulum_angle_raw"][-1]))
-        final_abs_cart = abs(float(step_data["cart_position_raw"][-1]))
-        angle_failed = final_abs_angle >= angle_limit
-        cart_failed = final_abs_cart >= cart_limit
-        
-        if angle_failed and cart_failed:
-            both_fail += 1
-        elif angle_failed:
-            angle_only_fail += 1
-        elif cart_failed:
-            cart_only_fail += 1
-    
-    total_window_episodes = len(selected_episodes)
-    angle_only_ratio = angle_only_fail / total_window_episodes * 100
-    cart_only_ratio = cart_only_fail / total_window_episodes * 100
-    both_fail_ratio = both_fail / total_window_episodes * 100
-    
-    pendulum_cap = bandwidth_cfg["max_total_band_bonus"]["pendulum_angle"]
-    cart_cap = bandwidth_cfg["max_total_band_bonus"]["cart_position"]
-    pendulum_cap_hit_ratio = np.nan
-    cart_cap_hit_ratio = np.nan
-    if pendulum_band_bonus_episode:
-        pendulum_cap_hits = np.sum(np.array(pendulum_band_bonus_episode, dtype=float) >= pendulum_cap - 1e-9)
-        pendulum_cap_hit_ratio = float(pendulum_cap_hits) / len(pendulum_band_bonus_episode) * 100
-    if cart_band_bonus_episode:
-        cart_cap_hits = np.sum(np.array(cart_band_bonus_episode, dtype=float) >= cart_cap - 1e-9)
-        cart_cap_hit_ratio = float(cart_cap_hits) / len(cart_band_bonus_episode) * 100
-    
-    config_table = pd.DataFrame([
+
+    config_rows = [
         {"Parametro": "simulation.decision_interval_sec", "Valor": sim_cfg["decision_interval_sec"]},
         {"Parametro": "simulation.dt_sec", "Valor": sim_cfg["dt_sec"]},
-        {"Parametro": "agent_base.agent_config.actions.actions_values.universal_params.delta_gain", "Valor": actions_cfg["universal_params"]["delta_gain"]},
+        {
+            "Parametro": "agent_base.agent_config.actions.actions_values.universal_params.delta_gain",
+            "Valor": actions_cfg["universal_params"]["delta_gain"],
+        },
         {"Parametro": "agent_base.params.discount_factor", "Valor": agent_base_cfg["params"]["discount_factor"]},
-        {"Parametro": "reward_base.reward_config.reward_approach", "Valor": config_main["reward_base"]["reward_config"]["reward_approach"]},
-        {"Parametro": "reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.per_step_band_bonus", "Valor": bandwidth_cfg["per_step_band_bonus"]},
-        {"Parametro": "reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.max_total_band_bonus.pendulum_angle", "Valor": pendulum_cap},
-        {"Parametro": "reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.max_total_band_bonus.cart_position", "Valor": cart_cap},
-        {"Parametro": "reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.ranges.error_pendulum_angle", "Valor": str(bandwidth_cfg["ranges"]["error_pendulum_angle"])},
-        {"Parametro": "reward_base.reward_calculation.extra_rewards.bonus_approach.bandwidth_bonus.ranges.error_cart_position", "Valor": str(bandwidth_cfg["ranges"]["error_cart_position"])},
-        {"Parametro": "reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_pendulum_angle.weight", "Valor": pendulum_penalty_cfg["weight"]},
-        {"Parametro": "reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_pendulum_angle.condition.type", "Valor": pendulum_cond.get("type")},
-        {"Parametro": "reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_pendulum_angle.condition.gain", "Valor": pendulum_cond.get("strength", pendulum_cond.get("scaled"))},
-        {"Parametro": "reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_pendulum_angle.condition.setpoint", "Valor": pendulum_cond.get("setpoint", pendulum_cond.get("x_sp", 0.0))},
-        {"Parametro": "reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_cart_position.weight", "Valor": cart_penalty_cfg["weight"]},
-        {"Parametro": "reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_cart_position.condition.type", "Valor": cart_cond.get("type")},
-        {"Parametro": "reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_cart_position.condition.gain", "Valor": cart_cond.get("strength", cart_cond.get("scaled"))},
-        {"Parametro": "reward_base.reward_calculation.extra_rewards.conditional_approach.dynamic_penalty.dynamic_penalty_params.control_action_cart_position.condition.setpoint", "Valor": cart_cond.get("setpoint", cart_cond.get("x_sp", 0.0))},
-    ])
-    
-    outcome_table = pd.DataFrame([
-        {"Metrica": "window_episodes", "Valor": total_window_episodes},
+        {"Parametro": "reward_base.reward_config.reward_approach", "Valor": reward_config["reward_approach"]},
+    ]
+
+    if "reward_composition" in reward_config:
+        for name, value in sorted(reward_config["reward_composition"].items()):
+            config_rows.append({
+                "Parametro": f"reward_base.reward_config.reward_composition.{name}",
+                "Valor": value,
+            })
+
+    if "local_control_quality" in reward_cfg:
+        local_cfg = reward_cfg["local_control_quality"]
+        config_rows.extend([
+            {"Parametro": "reward_base.reward_calculation.local_control_quality.enabled", "Valor": local_cfg["enabled"]},
+            {
+                "Parametro": "reward_base.reward_calculation.local_control_quality.normalized_reward_mode",
+                "Valor": local_cfg["normalized_reward_mode"],
+            },
+            {
+                "Parametro": "reward_base.reward_calculation.local_control_quality.strict_weight_sum",
+                "Valor": local_cfg["strict_weight_sum"],
+            },
+        ])
+        for cost_name, weights_by_variable in sorted(local_cfg["cost_weights"].items()):
+            for variable_name, weight in sorted(weights_by_variable.items()):
+                config_rows.append({
+                    "Parametro": f"reward_base.reward_calculation.local_control_quality.cost_weights.{cost_name}.{variable_name}",
+                    "Valor": weight,
+                })
+
+    if "cooperative_transition_evaluator" in reward_cfg:
+        cooperative_cfg = reward_cfg["cooperative_transition_evaluator"]
+        global_potential = cooperative_cfg["global_potential"]
+        config_rows.extend([
+            {
+                "Parametro": "reward_base.reward_calculation.cooperative_transition_evaluator.enabled",
+                "Valor": cooperative_cfg["enabled"],
+            },
+            {
+                "Parametro": "reward_base.reward_calculation.cooperative_transition_evaluator.global_potential.aggregation_mode",
+                "Valor": global_potential["aggregation_mode"],
+            },
+        ])
+        if global_potential["aggregation_mode"] == "additive_sync_blend":
+            sync_quality = global_potential["sync_quality"]
+            config_rows.extend([
+                {
+                    "Parametro": "reward_base.reward_calculation.cooperative_transition_evaluator.global_potential.sync_quality.enabled",
+                    "Valor": sync_quality["enabled"],
+                },
+                {
+                    "Parametro": "reward_base.reward_calculation.cooperative_transition_evaluator.global_potential.sync_quality.weight",
+                    "Valor": sync_quality["weight"],
+                },
+                {
+                    "Parametro": "reward_base.reward_calculation.cooperative_transition_evaluator.global_potential.sync_quality.epsilon",
+                    "Valor": sync_quality["epsilon"],
+                },
+            ])
+        for feature_name, weights_by_variable in sorted(global_potential["feature_weights"].items()):
+            for variable_name, weight in sorted(weights_by_variable.items()):
+                config_rows.append({
+                    "Parametro": f"reward_base.reward_calculation.cooperative_transition_evaluator.global_potential.feature_weights.{feature_name}.{variable_name}",
+                    "Valor": weight,
+                })
+        for variable_name, weight in sorted(global_potential["variable_weights"].items()):
+            config_rows.append({
+                "Parametro": f"reward_base.reward_calculation.cooperative_transition_evaluator.global_potential.variable_weights.{variable_name}",
+                "Valor": weight,
+            })
+
+    if "credit_allocator" in reward_cfg:
+        credit_cfg = reward_cfg["credit_allocator"]
+        controller_assignment = credit_cfg["controller_assignment"]
+        agent_assignment = credit_cfg["agent_assignment"]
+        config_rows.extend([
+            {"Parametro": "reward_base.reward_calculation.credit_allocator.enabled", "Valor": credit_cfg["enabled"]},
+            {
+                "Parametro": "reward_base.reward_calculation.credit_allocator.controller_assignment.mode",
+                "Valor": controller_assignment["mode"],
+            },
+            {
+                "Parametro": "reward_base.reward_calculation.credit_allocator.agent_assignment.mode",
+                "Valor": agent_assignment["mode"],
+            },
+        ])
+        for weight_family in ["credit_gain", "harmful_conflict_weight"]:
+            if weight_family in controller_assignment:
+                for variable_name, weight in sorted(controller_assignment[weight_family].items()):
+                    config_rows.append({
+                        "Parametro": f"reward_base.reward_calculation.credit_allocator.controller_assignment.{weight_family}.{variable_name}",
+                        "Valor": weight,
+                    })
+
+    if "internal_risk_penalty" in reward_cfg:
+        risk_cfg = reward_cfg["internal_risk_penalty"]
+        config_rows.append({
+            "Parametro": "reward_base.reward_calculation.internal_risk_penalty.enabled",
+            "Valor": risk_cfg["enabled"],
+        })
+        for risk_name, weight in sorted(risk_cfg["risk_weights"].items()):
+            config_rows.append({
+                "Parametro": f"reward_base.reward_calculation.internal_risk_penalty.risk_weights.{risk_name}",
+                "Valor": weight,
+            })
+
+    config_table = pd.DataFrame(config_rows)
+
+    outcome_rows = [
+        {"Metrica": "window_episodes", "Valor": len(selected_episodes)},
         {"Metrica": "stabilization_success_last500", "Valor": stabilization_count},
         {"Metrica": "final_t_sec_mean_last500", "Valor": round(float(episode_df["final_t_sec"].mean()), 6)},
         {"Metrica": "final_t_sec_p95_last500", "Valor": round(float(episode_df["final_t_sec"].quantile(0.95)), 6)},
@@ -982,74 +1054,119 @@ def build_decision_summary_tables(df, meta, history_window, tr_col):
         {"Metrica": "total_reward_std_last500", "Valor": round(float(episode_df["total_reward"].std()), 6)},
         {"Metrica": "sat_ratio_mean_last500", "Valor": round(float(episode_df["sat_ratio"].mean()), 6)},
         {"Metrica": "sat_ratio_p95_last500", "Valor": round(float(episode_df["sat_ratio"].quantile(0.95)), 6)},
-        {"Metrica": "angle_only_fail_pct_last500", "Valor": round(angle_only_ratio, 6)},
-        {"Metrica": "cart_only_fail_pct_last500", "Valor": round(cart_only_ratio, 6)},
-        {"Metrica": "both_fail_pct_last500", "Valor": round(both_fail_ratio, 6)},
-    ])
-    
-    loop_cost_table = pd.DataFrame(loop_cost_rows)
-    
-    loop_reward_table = pd.DataFrame([
-        {
-            "loop": "pendulum_angle",
-            "principal_reward_mean": round(pendulum_principal_mean, 6),
-            "extra_reward_mean": round(pendulum_extra_mean, 6),
-            "agent_reward_mean": round(pendulum_agent_reward_mean, 6),
-            "bonus_band_mean": round(pendulum_bonus_mean, 6),
-            "dynamic_penalty_mean": round(pendulum_penalty_mean, 6),
-            "extra_abs_over_principal_abs": round(abs(pendulum_extra_mean) / abs(pendulum_principal_mean), 6) if pendulum_principal_mean != 0 else np.nan,
-        },
-        {
-            "loop": "cart_position",
-            "principal_reward_mean": round(cart_principal_mean, 6),
-            "extra_reward_mean": round(cart_extra_mean, 6),
-            "agent_reward_mean": round(cart_agent_reward_mean, 6),
-            "bonus_band_mean": round(cart_bonus_mean, 6),
-            "dynamic_penalty_mean": round(cart_penalty_mean, 6),
-            "extra_abs_over_principal_abs": round(abs(cart_extra_mean) / abs(cart_principal_mean), 6) if cart_principal_mean != 0 else np.nan,
-        },
-    ])
-    
-    bonus_rows = []
-    if pendulum_band_bonus_episode:
-        pend_arr = np.array(pendulum_band_bonus_episode, dtype=float)
-        bonus_rows.append({
-            "loop": "pendulum_angle",
-            "accumulated_band_bonus_mean": round(float(np.mean(pend_arr)), 6),
-            "accumulated_band_bonus_p95": round(float(np.percentile(pend_arr, 95)), 6),
-            "accumulated_band_bonus_max": round(float(np.max(pend_arr)), 6),
-            "cap_config": pendulum_cap,
-            "cap_hit_pct": round(float(pendulum_cap_hit_ratio), 6),
-        })
-    if cart_band_bonus_episode:
-        cart_arr = np.array(cart_band_bonus_episode, dtype=float)
-        bonus_rows.append({
-            "loop": "cart_position",
-            "accumulated_band_bonus_mean": round(float(np.mean(cart_arr)), 6),
-            "accumulated_band_bonus_p95": round(float(np.percentile(cart_arr, 95)), 6),
-            "accumulated_band_bonus_max": round(float(np.max(cart_arr)), 6),
-            "cap_config": cart_cap,
-            "cap_hit_pct": round(float(cart_cap_hit_ratio), 6),
-        })
-    bonus_table = pd.DataFrame(bonus_rows)
-    
+    ]
+    for signal_name in [
+        "cooperative_global_quality_signed",
+        "cooperative_global_linear_quality_signed",
+        "cooperative_global_sync_quality_signed",
+        "cooperative_global_marginal_signed",
+        "cooperative_global_sync_weight",
+    ]:
+        if signal_name in interval_signal_values:
+            outcome_rows.append({
+                "Metrica": f"{signal_name}_mean_last500",
+                "Valor": round(interval_signal_mean(interval_signal_values, signal_name), 6),
+            })
+    if (
+        "cooperative_global_linear_quality_signed" in interval_signal_values
+        and "cooperative_global_sync_quality_signed" in interval_signal_values
+    ):
+        linear_arr = np.array(interval_signal_values["cooperative_global_linear_quality_signed"], dtype=float)
+        sync_arr = np.array(interval_signal_values["cooperative_global_sync_quality_signed"], dtype=float)
+        gap_arr = linear_arr - sync_arr
+        outcome_rows.extend([
+            {
+                "Metrica": "cooperative_linear_minus_sync_quality_signed_mean_last500",
+                "Valor": round(float(np.mean(gap_arr)), 6),
+            },
+            {
+                "Metrica": "cooperative_sync_gap_abs_mean_last500",
+                "Valor": round(float(np.mean(np.abs(gap_arr))), 6),
+            },
+        ])
+    outcome_table = pd.DataFrame(outcome_rows)
+
+    local_rows = []
+    local_cost_weights = {}
+    if "local_control_quality" in reward_cfg:
+        local_cost_weights = reward_cfg["local_control_quality"]["cost_weights"]
+    for variable_name in declared_variables:
+        row = {"variable": variable_name}
+        for cost_name in sorted(local_cost_weights):
+            signal_name = f"local_{cost_name}_cost_01_{variable_name}"
+            if signal_name in interval_signal_values:
+                row[f"{cost_name}_cost_01_mean"] = round(interval_signal_mean(interval_signal_values, signal_name), 6)
+        for signal_root in [
+            "local_cost_01",
+            "local_quality_01",
+            "local_quality_signed",
+            "local_marginal_quality_signed",
+        ]:
+            signal_name = f"{signal_root}_{variable_name}"
+            if signal_name in interval_signal_values:
+                row[f"{signal_root}_mean"] = round(interval_signal_mean(interval_signal_values, signal_name), 6)
+        local_rows.append(row)
+    local_quality_table = pd.DataFrame(local_rows)
+
+    reward_rows = []
+    for variable_name in declared_variables:
+        for signal_name in sorted(interval_signal_values):
+            if not signal_belongs_to_variable(signal_name, variable_name):
+                continue
+            if not (
+                signal_name.startswith("reward_")
+                or signal_name.startswith("cooperative_potential_")
+                or signal_name.startswith("cooperative_marginal_")
+                or signal_name.startswith("credit_")
+                or signal_name.startswith("agent_credit_")
+            ):
+                continue
+            reward_rows.append({
+                "variable": variable_name,
+                "signal": signal_name,
+                "mean": round(interval_signal_mean(interval_signal_values, signal_name), 6),
+            })
+    reward_signal_table = pd.DataFrame(reward_rows, columns=["variable", "signal", "mean"])
+
+    cooperative_quality_table = summarize_interval_signal_prefixes(interval_signal_values, ["cooperative_"])
+    credit_table = summarize_interval_signal_prefixes(interval_signal_values, ["credit_", "agent_credit_"])
+    internal_risk_table = summarize_interval_signal_prefixes(interval_signal_values, ["internal_risk_"])
+
+    physical_rows = []
+    for variable_name in declared_variables:
+        raw_key = f"{variable_name}_raw"
+        control_key = f"control_action_{variable_name}"
+        raw_abs_means = []
+        control_abs_means = []
+        boundary_hits = 0
+        boundary_samples = 0
+        for episode in selected_episodes:
+            step_data = episode["step_data"]
+            if raw_key in step_data:
+                raw_arr = np.array(step_data[raw_key], dtype=float)
+                raw_abs_means.append(float(np.mean(np.abs(raw_arr))))
+                if variable_name in boundary_cfg and len(raw_arr) > 0:
+                    limit = max(abs(float(value)) for value in boundary_cfg[variable_name])
+                    boundary_hits += int(abs(float(raw_arr[-1])) >= limit)
+                    boundary_samples += 1
+            if control_key in step_data:
+                control_abs_means.append(float(np.mean(np.abs(np.array(step_data[control_key], dtype=float)))))
+        row = {"variable": variable_name}
+        if raw_abs_means:
+            row["raw_abs_mean_last500"] = round(float(np.mean(raw_abs_means)), 6)
+        if control_abs_means:
+            row["control_abs_mean_last500"] = round(float(np.mean(control_abs_means)), 6)
+        if boundary_samples > 0:
+            row["final_boundary_hit_pct_last500"] = round(float(boundary_hits) / boundary_samples * 100.0, 6)
+        physical_rows.append(row)
+    physical_table = pd.DataFrame(physical_rows)
+
     policy_table = action_df.copy()
     if not policy_table.empty:
         policy_table["decrease_%"] = policy_table["decrease_%"].round(4)
         policy_table["maintain_%"] = policy_table["maintain_%"].round(4)
         policy_table["increase_%"] = policy_table["increase_%"].round(4)
-    
-    physical_table = pd.DataFrame([
-        {"Metrica": "abs_pendulum_angle_raw_mean", "Valor": round(float(np.mean(pendulum_angle_abs_means)), 6)},
-        {"Metrica": "abs_pendulum_velocity_raw_mean", "Valor": round(float(np.mean(pendulum_velocity_abs_means)), 6)},
-        {"Metrica": "abs_cart_position_raw_mean", "Valor": round(float(np.mean(cart_position_abs_means)), 6)},
-        {"Metrica": "abs_cart_velocity_raw_mean", "Valor": round(float(np.mean(cart_velocity_abs_means)), 6)},
-        {"Metrica": "abs_control_action_pendulum_mean", "Valor": round(float(np.mean(control_action_pendulum_abs_means)), 6)},
-        {"Metrica": "abs_control_action_cart_mean", "Valor": round(float(np.mean(control_action_cart_abs_means)), 6)},
-        {"Metrica": "mean_abs_u_total_raw_mean", "Valor": round(float(episode_df["mean_abs_u_total_raw"].mean()), 6)},
-        {"Metrica": "max_abs_u_total_raw_mean", "Valor": round(float(episode_df["max_abs_u_total_raw"].mean()), 6)},
-    ])
-    
+
     gains_rows = []
     gain_cols = sorted([c for c in df.columns if c.startswith("final_k")])
     last_df = df.tail(HISTORY_WINDOW_EPISODES)
@@ -1063,13 +1180,15 @@ def build_decision_summary_tables(df, meta, history_window, tr_col):
             "Std_last500": round(float(s.std()), 6),
         })
     gains_table = pd.DataFrame(gains_rows)
-    
+
     return [
         ("config_context", config_table),
         ("outcome_last500", outcome_table),
-        ("loop_cost_components_last500", loop_cost_table),
-        ("loop_reward_balance_last500", loop_reward_table),
-        ("loop_band_bonus_episode_last500", bonus_table),
+        ("local_quality_components_last500", local_quality_table),
+        ("reward_components_last500", reward_signal_table),
+        ("cooperative_quality_last500", cooperative_quality_table),
+        ("credit_components_last500", credit_table),
+        ("internal_risk_last500", internal_risk_table),
         ("policy_action_usage_last500", policy_table),
         ("physical_behavior_last500", physical_table),
         ("final_gains_last500", gains_table),
@@ -1135,8 +1254,21 @@ def run_analysis(sim_id):
     
     sheets["general_stats"] = build_general_stats(df, meta, tr_col)
     sheets["lagrange_components"] = build_component_stats(df, "L_", "Lagrange")
+    sheets["local_control_quality"] = build_component_stats(df, "local_", "Local Control Quality")
     sheets["agent_rewards"] = build_component_stats(df, "reward_", "Agent Rewards")
     sheets["extra_rewards"] = build_component_stats(df, "extra_", "Extra Rewards")
+    sheets["cooperative_transition"] = build_component_stats(
+        df,
+        "cooperative_",
+        "Cooperative Transition",
+    )
+    sheets["credit_components"] = build_component_stats(df, "credit_", "Credit Components")
+    sheets["agent_credit_components"] = build_component_stats(
+        df,
+        "agent_credit_",
+        "Agent Credit Components",
+    )
+    sheets["internal_risk_penalty"] = build_component_stats(df, "internal_risk_", "Internal Risk")
     sheets["normalization_audit"] = build_normalization_audit(df, meta)
     sheets["control_signals"] = build_control_signals(df)
     sheets["final_gains"] = build_final_gains(df, tr_col)

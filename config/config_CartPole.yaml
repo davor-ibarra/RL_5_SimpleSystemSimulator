@@ -54,7 +54,7 @@ controller_base:
       controller_name: controller_pendulum_angle
       module_path: controllers.pid_controller
       class_name: PIDController
-      initial_conditions: {kp: 1.0, ki: 1.0, kd: 1.0}
+      initial_conditions: {kp: 2.0, ki: 2.0, kd: 2.0}
       params:
         name_objective_var: 'pendulum_angle'
         setpoint: 0.0
@@ -67,7 +67,7 @@ controller_base:
       controller_name: controller_cart_position
       module_path: controllers.pid_controller
       class_name: PIDController
-      initial_conditions: {kp: 1.0, ki: 1.0, kd: 1.0}
+      initial_conditions: {kp: 2.0, ki: 2.0, kd: 2.0}
       params:
         name_objective_var: 'cart_position'
         setpoint: 0.0
@@ -115,14 +115,16 @@ agent_base:
             kd_cart_position: 0.2
     # Agent and State Configuration
     agents:
-      kp_pendulum_angle:       {enabled_agent: true, min: 0.0, max: 5.0, state_vars: []}
-      ki_pendulum_angle:       {enabled_agent: true, min: 0.0, max: 5.0, state_vars: []}
-      kd_pendulum_angle:       {enabled_agent: true, min: 0.0, max: 5.0, state_vars: []}
-      kp_cart_position:        {enabled_agent: true, min: 0.0, max: 5.0, state_vars: []}
-      ki_cart_position:        {enabled_agent: true, min: 0.0, max: 5.0, state_vars: []}
-      kd_cart_position:        {enabled_agent: true, min: 0.0, max: 5.0, state_vars: []}
-      pendulum_angle: {enabled_agent: false, min: 0.0, max: 0.5, bins: 2, state_vars: []}
-      cart_position: {enabled_agent: false, min: 0.0, max: 2.0, bins: 2, state_vars: []}
+      kp_pendulum_angle:       {enabled_agent: true, min: 0.0, max: 2.5, state_vars: []}
+      ki_pendulum_angle:       {enabled_agent: true, min: 0.0, max: 2.5, state_vars: []}
+      kd_pendulum_angle:       {enabled_agent: true, min: 0.0, max: 2.5, state_vars: []}
+      kp_cart_position:        {enabled_agent: true, min: 0.0, max: 2.5, state_vars: []}
+      ki_cart_position:        {enabled_agent: true, min: 0.0, max: 2.5, state_vars: []}
+      kd_cart_position:        {enabled_agent: true, min: 0.0, max: 2.5, state_vars: []}
+      error_pendulum_angle:    {enabled_agent: false, min: 0.0, max: 1.0, bins: 3, state_vars: []}
+      error_cart_position:     {enabled_agent: false, min: 0.0, max: 3.0, bins: 3, state_vars: []}
+      pendulum_angle: {enabled_agent: false, min: 0.0, max: 1.0, bins: 3, state_vars: []}
+      cart_position: {enabled_agent: false, min: 0.0, max: 1.0, bins: 3, state_vars: []}
       local_baseline_cost_01_pendulum_angle: {enabled_agent: false, min: 0.0, max: 1.0, bins: 3, state_vars: []}
       local_baseline_cost_01_cart_position: {enabled_agent: false, min: 0.0, max: 1.0, bins: 3, state_vars: []}
       cooperative_global_baseline_cost_01: {enabled_agent: false, min: 0.0, max: 1.0, bins: 3, state_vars: []}
@@ -147,8 +149,8 @@ reward_base:
         cooperation: 0.45
         strategy: 0.15
       mixing:
-        rho_local: 0.7
-        rho_global: 0.7
+        rho_local: 0.8
+        rho_global: 0.4
       risk_ceiling:
         enabled: true
         mode: linear_signed_upper_bound
@@ -245,7 +247,7 @@ reward_base:
           cart_position: 1.2
         allocated_effort:
           pendulum_angle: 1.0
-          cart_position: 0.75
+          cart_position: 1.0
       cost_weights:
         error_energy:
           pendulum_angle: 0.35
@@ -269,7 +271,7 @@ reward_base:
       marginal_baseline:
         mode: smoothed_baseline
         initial_cost_01:
-          pendulum_angle: 0.22
+          pendulum_angle: 0.5     # 0.22
           cart_position: 0.06
         tau:
           pendulum_angle: 0.06
@@ -284,6 +286,7 @@ reward_base:
       module_path: rewards.cooperative_transition_evaluator
       class_name: CooperativeTransitionEvaluator
       global_potential:
+        aggregation_mode: additive_sync_blend                  # weighted_cost | additive_sync_blend
         features: [
           local_error_energy_cost_01,
           local_error_power_expansive_cost_01,
@@ -307,13 +310,24 @@ reward_base:
           #  pendulum_angle: 0.0
           #  cart_position: 0.1
         variable_weights:
-          pendulum_angle: 0.72
-          cart_position: 0.28
+          pendulum_angle: 0.7
+          cart_position: 0.3
+        sync_quality:
+          enabled: true
+          weight: 0.10
+          epsilon: 1.0e-6
+          variable_weights_mode: uniform            # 'uniform' | 'global_potential': se usa variable_weights globales.
       marginal_baseline:
-        mode: smoothed_baseline
-        initial_cost_01: 0.15
-        tau: 0.06
-        delta_cost_ref: 0.24
+        mode: asymmetric_smoothed_baseline          # 'smoothed_baseline' | 'asymmetric_smoothed_baseline'
+        smoothed_baseline_params:
+          initial_cost_01: 0.15
+          tau: 0.06
+          delta_cost_ref: 0.24
+        asymmetric_smoothed_baseline_params:
+          initial_cost_01: 0.20
+          tau_improve: 0.08
+          tau_worsen: 0.005
+          delta_cost_ref: 0.28
     credit_allocator:
       enabled: true
       reward_name: credit_allocator
@@ -333,7 +347,7 @@ reward_base:
           cart_position: 1.0
         credit_gain:
           pendulum_angle: 1.0
-          cart_position: 1.0
+          cart_position: 0.75
         harmful_conflict_weight:
           pendulum_angle: 0.3
           cart_position: 0.6
@@ -361,10 +375,10 @@ reward_base:
           cart_position: 1.0
         credit_gain:
           pendulum_angle: 1.0
-          cart_position: 1.0
+          cart_position: 0.75
         harmful_conflict_weight:
-          pendulum_angle: 1.0
-          cart_position: 1.0
+          pendulum_angle: 0.3
+          cart_position: 0.6
       common_assignment:
         mode: global_transition
     internal_risk_penalty:
